@@ -1,0 +1,479 @@
+// DigiMaa – onboarding wizard, multi-routine home, per-routine launch, runner, editor. © Net Zero Strategic, LLC
+const APP_VER='1.2.3';
+const $=id=>document.getElementById(id),clone=o=>JSON.parse(JSON.stringify(o)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const nav2=(navigator.language||'en').slice(0,2);
+let L=LS.get('lang',null)||(I18N[nav2]?nav2:'en');const S=()=>I18N[L],SL=l=>I18N[l]||I18N.en;
+const EMOJIS=['☀️','🌙','📚','🪥','🚿','🧸','🎒','⭐','🌈','🦖','⚽','🎨'],COLORS=['#f97316','#1e3a8a','#16a34a','#db2777','#7c3aed','#0891b2','#ca8a04','#dc2626'];
+const IOS_UA=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const PLATFORM=NATIVE?Capacitor.getPlatform():null; // 'ios' | 'android' | null (web)
+const isStandalone=()=>!NATIVE&&(window.matchMedia('(display-mode: standalone)').matches||!!navigator.standalone);
+const isIOSSafari=()=>{const ua=navigator.userAgent;return IOS_UA&&/Safari/i.test(ua)&&!/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua)};
+let deferredPrompt=null;
+if(!NATIVE)window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e});
+// iOS Safari: <link rel=manifest> start_url overrides the current URL on Add to Home Screen — remove it so ?r=…#d=… is what gets pinned.
+(function(){if(!IOS_UA)return;const m=$('manifest');if(m)m.remove();document.querySelectorAll('link[rel="manifest"]').forEach(l=>l.remove())})();
+let _syncT=null;function queueSyncUrl(r){if(NATIVE||isStandalone())return;clearTimeout(_syncT);_syncT=setTimeout(()=>syncHomeUrl(r),0)}
+// ---------- storage ----------
+const allR=()=>LS.get('routines',{});
+function saveR(r){LS.set('routines',r);queueSyncUrl()}
+const setting=(k,d)=>LS.get(k,d);
+
+// ---------- child mode (device that received a Send-to-child link) ----------
+function isChildMode(){return LS.get('childMode',null)===true}
+function enableChildMode(){LS.set('childMode',true)}
+function disableChildMode(){LS.set('childMode',false)} // explicit false — migrate will not re-enable
+function migrateChildMode(){ // only if never decided: fromShare routines → child mode
+  if(LS.get('childMode',null)!=null)return;
+  try{if(Object.values(allR()).some(r=>r&&r.fromShare))LS.set('childMode',true)}catch(e){}
+}
+function kidHi(){const nm=kidName(activeKid())||'',p=dayPart(),EN=I18N.en,RS=S();
+  const k={M:'todM',A:'todA',E:'todE'}[p];
+  const tod=RS[k]||RS.todHi||EN[k]||EN.todHi||'Hi';
+  return nm?(tod+', '+nm+'!'):(tod+'!')}
+function childHome(){migrateChildMode();applyLang();
+  $('childGreet').textContent=kidHi();
+  const box=$('childList');box.innerHTML='';
+  const list=Object.values(allR());
+  if(!list.length){box.innerHTML='<p class="muted">…</p>'}
+  list.forEach(r=>{const b=document.createElement('button');b.className='big childStart';
+    b.style.background=r.color||'#4f46e5';b.textContent=(r.emoji||'⭐')+' '+(r.name||'');
+    b.onclick=()=>start(r.id);box.appendChild(b)});
+  // Hide trial tag / sub chrome in child mode
+  if($('trialTag'))$('trialTag').textContent='';
+  show('childHome')}
+function askParentGate(){const a=2+Math.floor(Math.random()*8),b=2+Math.floor(Math.random()*8);
+  const ans=prompt(t('parentGate',{a,b})||('Parent: what is '+a+' + '+b+'?'));
+  if(ans==null)return false;
+  if(String(ans).trim()===String(a+b)){disableChildMode();home();return true}
+  alert(t('parentGateWrong')||'Try again');return false}
+function wireParentEscape(){const logo=$('appLogo')||document.querySelector('header b');
+  if(logo&&!logo._parentWired){logo._parentWired=true;let t0=0,tm=null;
+    const down=()=>{t0=Date.now();tm=setTimeout(()=>{if(isChildMode())askParentGate()},3000)};
+    const up=()=>{clearTimeout(tm)};
+    logo.addEventListener('pointerdown',down);logo.addEventListener('pointerup',up);logo.addEventListener('pointerleave',up);
+    logo.addEventListener('touchstart',down,{passive:true});logo.addEventListener('touchend',up)}
+  const a=$('toParent');if(a&&!a._wired){a._wired=true;a.onclick=e=>{e.preventDefault();askParentGate()}}}
+function t(k,v){let s=S()[k];if(s==null)s=I18N.en[k];if(v)for(const x in v)s=s.split('{'+x+'}').join(v[x]);return s}
+function applyLang(){const s=S();document.documentElement.lang=L;document.documentElement.dir=s.rtl?'rtl':'ltr';Speech.lang=s.tts;
+ document.querySelectorAll('[data-t]').forEach(e=>{const v=s[e.dataset.t]??I18N.en[e.dataset.t];if(v!=null)e.textContent=v});
+ const d=Math.ceil(SUB.trialLeft());$('trialTag').textContent=SUB.hasPro()?'':(d>0?t('trialLeft',{d}):'')}
+function show(id){['ob','home','childHome','launch','run','edit','paywall','about','bring'].forEach(s=>$(s).hidden=s!==id);window.scrollTo(0,0)}
+// ---------- access policy ----------
+// 7-day trial from first launch unlocks everything. The FIRST routine can always be created (onboarding is never paywalled).
+// After the trial: running any routine or creating a 2nd+ routine requires the subscription.
+const canCreate=()=>Object.keys(allR()).length===0||SUB.hasAccess();
+const canRun=()=>isChildMode()||SUB.hasAccess();
+$('buyM').onclick=async()=>{if(await SUB.buy('monthly'))home()};$('buyY').onclick=async()=>{if(await SUB.buy('yearly'))home()};
+$('restore').onclick=async()=>{if(await SUB.restore())home()};$('trial').onclick=()=>SUB.buy('yearly').then(ok=>ok&&home());
+document.querySelectorAll('.toHome').forEach(a=>a.onclick=e=>{e.preventDefault();home()});
+$('toAbout').onclick=e=>{e.preventDefault();show('about')};
+// ---------- home ----------
+function home(){if(isChildMode())return childHome();syncHomeUrl();applyLang();
+ $('lang').innerHTML=Object.entries(I18N).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');$('lang').value=L;
+ $('mode').value=setting('mode','touch');$('kid').value=kidName(activeKid());$('praiseSel').value=setting('praise','every');$('checkSel').value=String(setting('checkin',120));$('tempSel').value=setting('tempUnit','auto');renderKids();$('useWeather').checked=setting('weather',true);
+ const R=allR();$('rlist').innerHTML='';
+ Object.values(R).filter(r=>!r.kid||r.kid===activeKid()).forEach(r=>{const d=document.createElement('div');d.className='rrow';
+  d.innerHTML=`<button class="rbtn" style="background:${r.color}">${r.emoji} ${esc(r.name)}</button><button class="s" title="edit">✏️</button><button class="s" title="home screen">📲</button>`;
+  const b=d.querySelectorAll('button');b[0].onclick=()=>canRun()?start(r.id):show('paywall');b[1].onclick=()=>openEditor(r.id);b[2].onclick=()=>{OB_R=r;wiz.page='hs';wiz.single=true;show('ob');renderOb()};
+  $('rlist').appendChild(d)});renderSub();show('home');
+ if(Object.keys(R).length){let box=$('shareBox');if(!box){box=document.createElement('div');box.id='shareBox';box.className='shareBox';$('rlist').after(box)}
+  box.innerHTML=`<button type="button" class="big" id="sendChildBtn">📤 ${esc(t('sendChild'))}</button>`+
+   ((!NATIVE&&!isStandalone())?`<button type="button" id="copyCodeHome">📋 ${esc(t('copyCode'))}</button><p class="muted small">${esc(t('hsCheckUrl'))}</p>`:'');
+  $('sendChildBtn').onclick=()=>sendToChild();const cc=$('copyCodeHome');if(cc)cc.onclick=copyRoutineCode}
+ else{const box=$('shareBox');if(box)box.remove()}}
+
+$('lang').onchange=()=>{L=$('lang').value;LS.set('lang',L);home()};
+$('mode').onchange=()=>{LS.set('mode',$('mode').value);queueSyncUrl()};$('kid').onchange=()=>{setKidName($('kid').value.trim());renderKids();queueSyncUrl()};$('tempSel').onchange=()=>{LS.set('tempUnit',$('tempSel').value);queueSyncUrl()};$('praiseSel').onchange=()=>{LS.set('praise',$('praiseSel').value);queueSyncUrl()};$('checkSel').onchange=()=>{LS.set('checkin',+$('checkSel').value);queueSyncUrl()};$('useWeather').onchange=()=>{LS.set('weather',$('useWeather').checked);queueSyncUrl()};
+$('newR').onclick=()=>canCreate()?startWizard(true):show('paywall');
+function renderKids(){const k=kids(),a=activeKid(),bar=$('kidBar');
+ bar.innerHTML=(k.length>1||k[0].name?k.map(x=>`<button class="chip${x.id===a?' on':''}" data-kid="${x.id}">🧒 ${esc(x.name||'…')}</button>`).join(''):'')+`<button class="chip" id="addKid">＋ ${esc(t('addKid'))}</button>`;
+ bar.querySelectorAll('[data-kid]').forEach(b=>b.onclick=()=>{LS.set('kidActive',b.dataset.kid);home()});
+ $('addKid').onclick=()=>{const n=(prompt(t('childQ'))||'').trim();if(!n)return;const k2=kids();if(k2.length===1&&!k2[0].name){k2[0].name=n}else{const id='k'+Date.now().toString(36);k2.push({id,name:n});LS.set('kidActive',id)}LS.set('kids',k2);home()}}
+// ---------- subscription status (home page only; never touches a running routine) ----------
+const fmtD=ms=>new Intl.DateTimeFormat(L,{dateStyle:'medium'}).format(new Date(ms));
+function renderSub(){const st=SUB.status,w=SUB.warning(),bn=$('subBanner');
+ const key=w&&(w+':'+(st.exp||st.billingIssue));
+ if(w&&LS.get('dismissed',null)!==key){bn.hidden=false;bn.className='banner'+(w==='billing'?' bad':'');
+  bn.innerHTML=w==='billing'?`<span>⚠️ ${esc(t('bannerBill',{store:SUB.storeName()}))}</span><a class="primary" style="padding:8px 12px;border-radius:10px;text-decoration:none" href="${esc(SUB.manageURL())}" target="_blank" rel="noopener">${esc(t('manage'))}</a><button class="x">✕</button>`
+   :`<span>⏳ ${esc(t('bannerExp',{d:fmtD(st.exp)}))}</span><button class="primary rn">${esc(t('renew'))}</button><button class="x">✕</button>`;
+  bn.querySelector('.x').onclick=()=>{LS.set('dismissed',key);bn.hidden=true};const rn=bn.querySelector('.rn');if(rn)rn.onclick=()=>show('paywall')}
+ else bn.hidden=true;
+ let line;if(st&&SUB.hasPro()){const plan=/year|annual/i.test(st.product||'')?t('stYearly'):t('stMonthly');
+  line=plan+(st.exp?' · '+(st.willRenew&&st.exp>Date.now()?t('stRenews',{d:fmtD(st.exp)}):t('stExpires',{d:fmtD(st.exp)})):'')}
+ else{const d=Math.ceil(SUB.trialLeft());line=(!SUB.native()&&d>0)?t('trialLeft',{d}):t('stNone')}
+ if(SUB.offline)line+=' · '+t('stOffline');$('subLine').textContent=line;$('manageSub').href=SUB.manageURL()}
+SUB.onChange(()=>{applyLang();if(!$('home').hidden)renderSub()});
+// ---------- routine builder (fast, tap-first) ----------
+// First run: device → language → pick a routine → tap steps → name & look → child's name → voice/touch → all set.
+// Later routines: pick → steps → look → all set. "⚡ School morning" makes the ready-made routine and starts it in one tap.
+const FIRST=['device','lang','pick','steps','look','kid','mode','hs'],LATER=['pick','steps','look','hs'];
+const EMO={morning:['🚽','🧼','🚿','🧖','👕','🧥','💇','🥣','🍽️','🎒','👟'],bedtime:['🚽','🧼','🪥','💧','👚','🛏️'],homework:['📚','🧹','📖','✏️','🧃','✅','🎒']};
+let wiz={},OB_R=null;
+function startWizard(later){wiz={pages:later?LATER:FIRST,type:null,items:[],device:setting('device',PLATFORM||(IOS_UA?'ios':/Android/i.test(navigator.userAgent)?'android':'ios'))};
+ wiz.page=wiz.pages[0];OB_R=null;show('ob');renderOb()}
+function template(type){const s=S();const mk=(arr,em,on)=>arr.map((x,n)=>x.weather?{weather:true,emoji:'🧥',on}:Object.assign({emoji:em[n]||'⭐',on},typeof x==='string'?{text:x}:clone(x)));
+ if(type==='custom'){const seen=new Set();return [...mk(s.morning,EMO.morning,false),...mk(s.bedtime,EMO.bedtime,false),...mk(s.hwSteps,EMO.homework,false)].filter(x=>{const k=x.weather?'w':x.text;return !seen.has(k)&&seen.add(k)})}
+ return mk({morning:s.morning,bedtime:s.bedtime,homework:s.hwSteps}[type],EMO[type],true)}
+function makeRoutine(type,items){const s=S();return {id:'r'+Date.now().toString(36),kid:activeKid(),name:{morning:t('schoolM'),bedtime:s.bName,homework:t('afterSchool')}[type]||t('makeOwn'),
+ emoji:{morning:'☀️',bedtime:'🌙',homework:'📚'}[type]||'⭐',color:{morning:'#f97316',bedtime:'#1e3a8a',homework:'#16a34a'}[type]||'#7c3aed',lang:L,calm:type==='bedtime',doneBy:'',
+ steps:items.filter(x=>x.on&&(x.weather?setting('weather',true):true)).map(x=>{const y=clone(x);delete y.on;return y})}}
+function quickStart(){const r=makeRoutine('morning',template('morning'));const R=allR();R[r.id]=r;saveR(R);if(!SUB.hasAccess()&&Object.keys(R).length>1)return show('paywall');start(r.id)}
+function micBtn(input){if(!(NATIVE||window.SpeechRecognition||window.webkitSpeechRecognition))return '';return `<button class="mic" data-for="${input}">🎤</button>`}
+function wireMics(){document.querySelectorAll('#obBody .mic').forEach(b=>b.onclick=async()=>{b.disabled=true;const v=await Speech.dictate(S().tts);b.disabled=false;if(v){const i=$(b.dataset.for);i.value=v;i.dispatchEvent(new Event('input'));if(b.dataset.for==='ownIn')$('ownAdd').click()}})}
+const dayNames=()=>[...Array(7)].map((_,d)=>new Intl.DateTimeFormat(L,{weekday:'short'}).format(new Date(2024,0,7+d)));
+const tag=x=>[x.wait?Math.round(x.wait/60)+' '+t('minutes'):'',x.days?x.days.map(d=>dayNames()[d]).join(' '):''].filter(Boolean).join(' · ');
+function renderOb(){const B=$('obBody'),p=wiz.page,s=S();applyLang();
+ const idx=wiz.pages?wiz.pages.indexOf(p):0,n=wiz.pages?wiz.pages.length:1;$('obProg').textContent=wiz.single?'':t('progress',{a:idx+1,b:n});$('obDots').innerHTML=`<i style="width:${(idx+1)/n*100}%"></i>`;
+ $('obBack').style.visibility=(wiz.single||idx<=0||p==='hs')?'hidden':'visible';
+ $('obNext').hidden=p==='pick';$('obNext').textContent=p==='hs'?t('allSet')+' 🎉':p==='look'?t('makeR')+' ✨':t('next');
+ const choice=(arr,cur,key)=>arr.map(([v,l])=>`<button class="choice${cur===v?' on':''}" data-v="${v}" data-k="${key}">${esc(l)}</button>`).join('');
+ if(p==='device')B.innerHTML=`<div class="q">${esc(t('obDevice'))}</div>${choice([['ios','📱 '+t('iphone')],['android','🤖 '+t('android')]],wiz.device,'device')}<p class="muted">${esc(t('detected',{d:wiz.device==='ios'?'iPhone':'Android'}))}</p>`;
+ else if(p==='lang')B.innerHTML=`<div class="q">${esc(t('obLang'))}</div>`+Object.entries(I18N).map(([k,v])=>`<button class="choice${k===L?' on':''}" data-v="${k}" data-k="lang">${v.name}</button>`).join('');
+ else if(p==='pick'){B.innerHTML=`<button class="quick" id="quickBtn">${esc(t('quick'))}</button><div class="q">${esc(t('pickQ'))}</div><div class="cards">`+
+   [['morning','☀️',t('schoolM')],['bedtime','🌙',s.bName],['homework','🎒',t('afterSchool')],['custom','✨',t('makeOwn')]].map(([v,e,l])=>`<button class="card" data-pick="${v}"><span class="e">${e}</span>${esc(l)}</button>`).join('')+'</div>';
+  $('quickBtn').onclick=quickStart;
+  B.querySelectorAll('[data-pick]').forEach(c=>c.onclick=()=>{const v=c.dataset.pick;if(wiz.type!==v){wiz.type=v;wiz.items=template(v)}wiz.page='steps';renderOb()})}
+ else if(p==='steps'){const on=wiz.items.filter(x=>x.on).length;
+  B.innerHTML=`<div class="q">${esc(t('stepsQ'))}</div><p class="muted small">${esc(t('dragHint'))} · ✓ ${on}</p><ul class="slist" id="slist">`+
+   wiz.items.map((x,n)=>`<li class="srow ${x.on?'on':'off'}" data-n="${n}"><span class="h" aria-label="drag">☰</span><span class="e">${x.emoji}</span><button class="tx" data-tg="${n}">${esc(x.weather?t('weatherStep'):x.text)}<br><span class="tag">${esc(tag(x))}</span></button><button class="mv" data-ex="${n}" aria-label="more">⏱</button><span style="display:flex;flex-direction:column"><button class="mv" data-u="${n}" aria-label="up">↑</button><button class="mv" data-d="${n}" aria-label="down">↓</button></span><button class="ck" data-tg="${n}">${x.on?'✓':'+'}</button></li>`).join('')+
+   `</ul><div class="inrow"><input id="ownIn" placeholder="${esc(t('addOwn'))}"><button id="ownAdd">＋</button>${micBtn('ownIn')}</div>`;
+  B.querySelectorAll('[data-tg]').forEach(b=>b.onclick=()=>{const x=wiz.items[b.dataset.tg];x.on=!x.on;renderOb()});
+  B.querySelectorAll('[data-ex]').forEach(b=>b.onclick=()=>openSheet(wiz.items[b.dataset.ex]));
+  const mv=(n,d)=>{const m=n+d;if(m<0||m>=wiz.items.length)return;[wiz.items[n],wiz.items[m]]=[wiz.items[m],wiz.items[n]];renderOb()};
+  B.querySelectorAll('[data-u]').forEach(b=>b.onclick=()=>mv(+b.dataset.u,-1));B.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>mv(+b.dataset.d,1));
+  const add=()=>{const v=$('ownIn').value.trim();if(v){wiz.items.push({text:v,emoji:'⭐',on:true});renderOb();$('ownIn').focus()}};$('ownAdd').onclick=add;$('ownIn').onkeydown=e=>{if(e.key==='Enter')add()};
+  wireDrag($('slist'));wireMics()}
+ else if(p==='look'){const r=wiz.draft;B.innerHTML=`<div class="q">${esc(t('lookQ'))}</div><div class="bigicon" style="background:${r.color}">${r.emoji}</div>
+  <div class="inrow"><input id="rnIn" value="${esc(r.name)}" aria-label="${esc(t('rName'))}">${micBtn('rnIn')}</div>
+  <div class="chips">${EMOJIS.map(e=>`<button class="chip emo${r.emoji===e?' on':''}" data-e="${e}">${e}</button>`).join('')}</div>
+  <div class="chips">${COLORS.map(c=>`<button class="sw${r.color===c?' on':''}" data-c2="${c}" style="background:${c}"></button>`).join('')}</div>
+  <label>⏰ ${esc(t('doneBy'))}<input type="time" id="dbIn" value="${r.doneBy||''}"></label>`;
+  $('rnIn').oninput=e=>r.name=e.target.value;$('dbIn').onchange=e=>r.doneBy=e.target.value;
+  B.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>{r.emoji=b.dataset.e;renderOb()});B.querySelectorAll('[data-c2]').forEach(b=>b.onclick=()=>{r.color=b.dataset.c2;renderOb()});wireMics()}
+ else if(p==='kid'){B.innerHTML=`<div class="q">${esc(t('childQ'))}</div><div class="inrow"><input id="kidIn" value="${esc(kidName(activeKid()))}">${micBtn('kidIn')}</div>`;$('kidIn').oninput=e=>setKidName(e.target.value.trim());wireMics()}
+ else if(p==='mode'){const m=setting('mode','touch');B.innerHTML=`<div class="q">${esc(t('modeQ'))}</div>${choice([['touch','👆 '+t('touch')],['voice','🎤 '+t('voice')]],m,'mode')}`+(m==='voice'?`<p class="muted">${esc(wiz.device==='ios'?t('speechIOS'):t('speechAndroid'))}</p>`:'')}
+ else if(p==='hs')renderHS(B,OB_R);
+ B.querySelectorAll('.choice').forEach(b=>b.onclick=()=>{const k=b.dataset.k,v=b.dataset.v;
+  if(k==='device'){wiz.device=v;LS.set('device',v)}else if(k==='lang'){L=v;LS.set('lang',v);wiz.type=null}else if(k==='mode')LS.set('mode',v);renderOb()})}
+function openSheet(x){const dn=dayNames(),el=$('sheetIn');const draw=()=>{const mins=x.wait?x.wait/60:0;
+ el.innerHTML=`<div class="q">${x.emoji} ${esc(x.weather?t('weatherStep'):x.text)}</div><b>⏱ ${esc(t('giveTime'))}</b><div class="chips">`+[0,1,2,5,10].map(m=>`<button class="chip${mins===m?' on':''}" data-m="${m}">${m?m+' '+esc(t('minutes')):esc(t('noTimer'))}</button>`).join('')+
+  `</div><b>📅 ${esc(t('someDays'))}</b><div class="chips">`+dn.map((d,j)=>`<button class="chip${!x.days||x.days.includes(j)?' on':''}" data-dd="${j}">${d}</button>`).join('')+`</div><button class="big" id="sheetOk">${esc(t('okB'))}</button>`;
+ el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const m=+b.dataset.m;if(m){x.wait=m*60;x.auto=true}else{delete x.wait;delete x.auto}draw()});
+ el.querySelectorAll('[data-dd]').forEach(b=>b.onclick=()=>{const j=+b.dataset.dd;let d=x.days||[0,1,2,3,4,5,6];d=d.includes(j)?d.filter(z=>z!==j):[...d,j].sort();if(!d.length)return;x.days=d.length===7?undefined:d;if(!x.days)delete x.days;draw()});
+ $('sheetOk').onclick=()=>{$('sheet').hidden=true;renderOb()}};draw();$('sheet').hidden=false}
+$('sheet').onclick=e=>{if(e.target.id==='sheet'){$('sheet').hidden=true;renderOb()}};
+function wireDrag(list){list.querySelectorAll('.h').forEach(h=>h.onpointerdown=e=>{e.preventDefault();const li=h.closest('li');let from=+li.dataset.n;li.classList.add('drag');
+ const mv=ev=>{ev.preventDefault();const over=document.elementFromPoint(ev.clientX,ev.clientY);const tli=over&&over.closest&&over.closest('#slist li');
+  if(ev.clientY<60)window.scrollBy(0,-12);else if(ev.clientY>innerHeight-60)window.scrollBy(0,12); // auto-scroll on long lists
+  if(!tli||tli===li)return;const to=+tli.dataset.n;const it=wiz.items.splice(from,1)[0];wiz.items.splice(to,0,it);(to>from?tli.after(li):tli.before(li));[...list.children].forEach((c,i)=>c.dataset.n=i);from=to};
+ const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);removeEventListener('pointercancel',up);li.classList.remove('drag');renderOb()};
+ addEventListener('pointermove',mv,{passive:false});addEventListener('pointerup',up);addEventListener('pointercancel',up)})}
+$('obBack').onclick=()=>{const i=wiz.pages.indexOf(wiz.page);if(i>0){wiz.page=wiz.pages[i-1];renderOb()}};
+$('obNext').onclick=()=>{const p=wiz.page;
+ if(p==='hs'){wiz={};return home()}
+ if(p==='steps'){if(!wiz.items.some(x=>x.on))return;const keep=wiz.draft;wiz.draft=makeRoutine(wiz.type,wiz.items);if(keep){wiz.draft.id=keep.id;wiz.draft.name=keep.name;wiz.draft.emoji=keep.emoji;wiz.draft.color=keep.color;wiz.draft.doneBy=keep.doneBy}}
+ if(p==='look'){const R=allR();wiz.draft.name=(wiz.draft.name||'').trim()||t('makeOwn');R[wiz.draft.id]=wiz.draft;saveR(R);OB_R=wiz.draft;syncHomeUrl(wiz.draft)}
+ wiz.page=wiz.pages[wiz.pages.indexOf(p)+1];renderOb()};
+// ---------- children ----------
+function kids(){let k=LS.get('kids',null);if(!k){k=[{id:'k1',name:setting('kid','')}];LS.set('kids',k);LS.set('kidActive','k1')}return k}
+const activeKid=()=>{const k=kids(),a=setting('kidActive',k[0].id);return k.some(x=>x.id===a)?a:k[0].id};
+const kidName=id=>(kids().find(x=>x.id===id)||{}).name||'';
+function setKidName(n){const k=kids(),a=activeKid();k.forEach(x=>{if(x.id===a)x.name=n});LS.set('kids',k);queueSyncUrl()}
+// ---------- home-screen entry per routine ----------
+// Pack setup into the QUERY STRING (?share=1&r=&d=) — iMessage and many apps strip #hash.
+// d= is compact JSON (short keys) + optional deflate-raw ('z' prefix), always base64url (no +/).
+function b64str(s){return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+function b64(o){return b64str(typeof o==='string'?o:JSON.stringify(o))}
+function unb64(s){try{s=String(s).replace(/ /g,'+').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';return JSON.parse(decodeURIComponent(escape(atob(s))))}catch(e){return null}}
+function u8ToB64url(u8){let s='';for(let i=0;i<u8.length;i+=0x8000)s+=String.fromCharCode.apply(null,u8.subarray(i,Math.min(i+0x8000,u8.length)));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+function b64urlToU8(s){s=String(s).replace(/ /g,'+').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const bin=atob(s),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);return u8}
+function cStep(x){if(typeof x==='string')return x;if(x&&x.weather)return{w:1};const o={t:x.text};if(x.emoji&&x.emoji!=='⭐')o.e=x.emoji;if(x.wait)o.s=x.wait;if(x.auto!=null)o.a=x.auto===true?1:x.auto;if(x.days&&x.days.length)o.d=x.days;return o}
+function xStep(x){if(typeof x==='string')return{text:x};if(x&&x.w)return{weather:true};const o={text:x.t||x.text||''};if(x.e||x.emoji)o.emoji=x.e||x.emoji;if(x.s||x.wait)o.wait=x.s||x.wait;if(x.a!=null||x.auto!=null)o.auto=x.a!=null?(x.a===1?true:x.a):x.auto;if(x.d||x.days)o.days=x.d||x.days;return o}
+function cRoutine(r){return{i:r.id,n:r.name,e:r.emoji,c:r.color,l:r.lang||L,k:r.kid,m:r.calm?1:0,b:r.doneBy||'',s:(r.steps||[]).map(cStep)}}
+function xRoutine(o){if(!o)return null;if(o.id&&o.steps)return o;return{id:o.i||o.id,name:o.n||o.name,emoji:o.e||o.emoji||'⭐',color:o.c||o.color||'#4f46e5',lang:o.l||o.lang||L,kid:o.k||o.kid,calm:!!(o.m||o.calm),doneBy:o.b||o.doneBy||'',steps:(o.s||o.steps||[]).map(xStep)}}
+function packSetup(r){let kn='';try{kn=kidName(r.kid||activeKid())}catch(e){}
+ return{v:1,r:cRoutine(r),k:kn,m:setting('mode','touch'),l:L,u:setting('tempUnit','auto'),p:setting('praise','every'),c:setting('checkin',120),w:setting('weather',true)?1:0,d:setting('device',wiz.device||null),y:setting('country',null)}}
+function unpackSetup(data){if(!data)return null;data=Object.assign({},data);if(data.r)data.r=xRoutine(data.r);
+ if(data.kidName==null&&data.k!=null)data.kidName=data.k;if(data.mode==null&&data.m!=null)data.mode=data.m;
+ if(data.lang==null&&data.l!=null)data.lang=data.l;if(data.tempUnit==null&&data.u!=null)data.tempUnit=data.u;
+ if(data.praise==null&&data.p!=null)data.praise=data.p;if(data.checkin==null&&data.c!=null)data.checkin=data.c;
+ if(data.weather==null&&data.w!=null)data.weather=!!data.w;if(data.device==null&&data.d!=null)data.device=data.d;
+ if(data.country==null&&data.y!=null)data.country=data.y;return data}
+function encodePack(o){return b64(o)} // sync: compact JSON + base64url
+async function encodePackZ(o){const json=JSON.stringify(o);try{if(typeof CompressionStream!=='undefined'){
+  const ab=await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
+  const z='z'+u8ToB64url(new Uint8Array(ab));if(z.length<b64str(json).length)return z}}catch(e){}return b64str(json)}
+function decodePack(s){if(!s)return null;if(s.charAt(0)==='z')return null; // needs async inflate
+ return unpackSetup(unb64(s))}
+async function decodePackAny(s){if(!s)return null;if(s.charAt(0)==='z'){try{
+  const u8=b64urlToU8(s.slice(1));const ab=await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+  return unpackSetup(JSON.parse(new TextDecoder().decode(ab)))}catch(e){return null}}
+ return unpackSetup(unb64(s))}
+async function extractPack(url){try{const u=new URL(url,location.origin);let data=null,id=u.searchParams.get('r');
+  let share=u.searchParams.get('share')==='1';
+  const dq=u.searchParams.get('d');if(dq)data=await decodePackAny(dq);
+  // Legacy: packed payload in #d= / #r= (iMessage strips hash — kept for Safari / in-place open)
+  if(!data&&u.hash){const h=u.hash.charAt(0)==='#'?u.hash.slice(1):u.hash;let dv=null,hv=null;
+   try{const sp=new URLSearchParams(h.charAt(0)==='/'?h.slice(1):h);dv=sp.get('d');hv=sp.get('r')}catch(e){}
+   if(!dv){const m=/(?:^|[?&#/])d=([\s\S]*)/.exec(h);if(m)dv=m[1]}
+   if(!id&&hv)id=hv;
+   if(!id){const m=/(?:^|[?&#/])r=([^&]+)/.exec(h);if(m)id=decodeURIComponent(m[1])}
+   if(dv){try{data=await decodePackAny(decodeURIComponent(dv))}catch(e){data=await decodePackAny(dv)}}}
+  if(!id&&data&&data.r)id=data.r.id;
+  if(data&&data.r)share=true; // any packed routine → force-import path
+  return{id,data,share}}catch(e){return{id:null,data:null,share:false}}}
+function launchUrl(r){const d=encodePack(packSetup(r)),id=encodeURIComponent(r.id);
+  // Query carries everything (hash is dropped by iMessage / many share targets)
+  return location.origin+location.pathname+'?r='+id+'&d='+d}
+const PUBLIC_BASE='https://digimaa.app/';
+function shareChildUrl(r,packed){r=r||primaryRoutine();if(!r)return PUBLIC_BASE;
+  const d=packed||encodePack(packSetup(r));
+  // Never put payload in #hash — iMessage strips it. Query only; base64url (no +/).
+  return PUBLIC_BASE+'?share=1&r='+encodeURIComponent(r.id)+'&d='+encodeURIComponent(d)}
+function toast(msg){let el=$('toast');if(!el){el=document.createElement('div');el.id='toast';el.className='toast';document.body.appendChild(el)}
+ el.textContent=msg;el.classList.add('on');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('on'),2200)}
+function resolveShareRoutine(r){r=r||OB_R||primaryRoutine();if(!r)return null;
+  try{const live=allR()[r.id];if(live)r=live}catch(e){}
+  if(!r.steps||!r.steps.length)return null;return r}
+async function sendToChild(r){r=resolveShareRoutine(r);if(!r){toast(t('bringHelp'));return}
+  const packed=await encodePackZ(packSetup(r));
+  const url=shareChildUrl(r,packed);
+  if(/#d=/.test(url)){toast('Update DigiMaa (v'+APP_VER+') — old link format');return}
+  if(url.length>2200)console.warn('DigiMaa share URL long',url.length);
+  const nm=kidName(r.kid||activeKid())||'…';
+  const title=r.name||'DigiMaa',text=t('sendChildText',{r:r.name,n:nm})+'\n'+url;
+  if(navigator.share){try{await navigator.share({title,text,url});toast('v'+APP_VER);return}catch(e){if(e&&e.name==='AbortError')return}}
+  const done=()=>toast(t('linkCopied')+' · v'+APP_VER);
+  if(navigator.clipboard&&navigator.clipboard.writeText){try{await navigator.clipboard.writeText(url);done();return}catch(e){}}
+  const ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}
+function primaryRoutine(){const R=allR();let kid=null;try{kid=activeKid()}catch(e){}
+  const list=Object.values(R).filter(r=>!r.kid||!kid||r.kid===kid);return list[0]||Object.values(R)[0]||null}
+function syncHomeUrl(r){if(NATIVE||isStandalone())return;r=r||primaryRoutine();
+ if(!r){if(!/\?r=/.test(location.search)&&!/#d=/.test(location.hash))return;history.replaceState(null,'',location.pathname);setHeadFor(null);return}
+ const url=launchUrl(r);if(location.href!==url)history.replaceState(null,'',url);setHeadFor(r)}
+function iconDataUrl(r,size=180){const c=document.createElement('canvas');c.width=c.height=size;const g=c.getContext('2d');g.fillStyle=r.color||'#4f46e5';g.fillRect(0,0,size,size);
+ g.font=`${size*.6}px serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(r.emoji||'⭐',size/2,size*.55);return c.toDataURL('image/png')}
+function setHeadFor(r){document.title=r?r.name:'DigiMaa';if($('appTitle'))$('appTitle').content=r?r.name:'DigiMaa';
+ if($('touchIcon'))$('touchIcon').href=r?iconDataUrl(r,180):'icon-192.png';
+ if(IOS_UA){const m=$('manifest');if(m)m.remove();document.querySelectorAll('link[rel="manifest"]').forEach(l=>l.remove());return}
+ let man=$('manifest');if(!man){man=document.createElement('link');man.rel='manifest';man.id='manifest';document.head.appendChild(man)}
+ if(!r){man.href='manifest.webmanifest';return}
+ const d=encodePack(packSetup(r));
+ man.href=`manifest.webmanifest?r=${encodeURIComponent(r.id)}&n=${encodeURIComponent(r.name)}&e=${encodeURIComponent(r.emoji||'⭐')}&c=${encodeURIComponent(r.color||'#4f46e5')}&d=${d}`}
+function importSetup(data,id,asChild){if(!data||!data.r)return false;data=unpackSetup(data);const rid=id||data.r.id;if(!rid)return false;
+  if(data.lang&&I18N[data.lang]){L=data.lang;LS.set('lang',L)}
+  if(data.mode)LS.set('mode',data.mode);if(data.tempUnit)LS.set('tempUnit',data.tempUnit);if(data.praise)LS.set('praise',data.praise);
+  if(data.checkin!=null)LS.set('checkin',data.checkin);if(data.weather!=null)LS.set('weather',!!data.weather);
+  if(data.device)LS.set('device',data.device);if(data.country)LS.set('country',data.country);
+  const R=allR();const prev=R[rid];R[rid]=data.r;
+  if(asChild||(prev&&prev.fromShare)){R[rid].fromShare=true;enableChildMode()}
+  if(data.kidName){const k=kids();let c=k.find(x=>x.name===data.kidName);if(!c){if(k.length===1&&!k[0].name){k[0].name=data.kidName;c=k[0]}else{c={id:'k'+Date.now().toString(36),name:data.kidName};k.push(c)}LS.set('kids',k)}
+   R[rid].kid=c.id;LS.set('kidActive',c.id)}
+  saveR(R);return true}
+function routineCode(r){r=resolveShareRoutine(r);return r?encodePack(packSetup(r)):''}
+function copyRoutineCode(){const code=routineCode();if(!code)return;const done=()=>{[$('copyCodeBtn'),$('copyCodeHome')].forEach(b=>{if(b)b.textContent=t('codeCopied')})};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(code).then(done).catch(fallback);else fallback();
+  function fallback(){const ta=document.createElement('textarea');ta.value=code;document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}}
+function showBringOver(){applyLang();show('bring');$('bringIn').value='';$('bringGo').onclick=async()=>{const raw=($('bringIn').value||'').trim();
+  let data=await decodePackAny(raw);if(!data){const ex=await extractPack(raw.startsWith('http')?raw:PUBLIC_BASE+'?'+raw);data=ex.data;if(data&&ex.id&&data.r&&!data.r.id)data.r.id=ex.id}
+  if(!data||!data.r){alert(t('bringHelp'));return}
+  importSetup(data,data.r.id);home();if(canRun())start(data.r.id)}}
+function showHSAfterSave(r){if(!r)return home();if(NATIVE||isStandalone())return home();OB_R=r;wiz={page:'hs',single:true};show('ob');renderOb()}
+function renderHS(B,r){const dev=setting('device',wiz.device||(IOS_UA?'ios':'android'));setHeadFor(r);
+ if(!NATIVE)history.replaceState(null,'',launchUrl(r));
+ let body='';
+ if(PLATFORM==='android')body=`<p>${esc(t('hsNativeA',{r:r.name}))}</p><button class="big" id="pinBtn">📲 ${esc(t('pin'))}</button>`;
+ else if(PLATFORM==='ios')body=`<p>${esc(t('hsNativeI',{r:r.name}))}</p><code id="lnk">digimaa://run?r=${r.id}</code><button id="cpBtn">${esc(t('copyLink'))}</button>`;
+ else if(isStandalone())body=`<p class="muted">${esc(t('hsAlready'))}</p>`;
+ else if(IOS_UA){
+  body=`<p class="muted small">${esc(t('hsCheckUrl'))}</p>`;
+  if(isIOSSafari())body+=`<div class="hsGuide"><p class="hsLead">${esc(t('hsIOSTitle',{r:r.name}))}</p>
+   <ol class="hsSteps"><li><div class="hsIcon share" aria-hidden="true"><svg viewBox="0 0 24 24" width="36" height="36"><path fill="#4f46e5" d="M12 3l4 4h-3v8h-2V7H8l4-4zm-7 14h14v2H5v-2z"/></svg></div><div>${esc(t('hsIOS1'))}</div></li>
+   <li><div class="hsIcon">＋⬜</div><div>${esc(t('hsIOS2'))}</div></li>
+   <li><div class="hsIcon">✓</div><div>${esc(t('hsIOS3'))}</div></li></ol>
+   <div class="hsArrow" aria-hidden="true"><span>${esc(t('hsIOSShare'))}</span><div class="hsShareBtn">□↑</div></div></div>`;
+  else body+=`<p>${esc(t('hsIOSOther'))}</p><div class="hsGuide"><ol class="hsSteps"><li><div class="hsIcon share">□↑</div><div>${esc(t('hsIOS1'))}</div></li><li><div class="hsIcon">＋⬜</div><div>${esc(t('hsIOS2'))}</div></li><li><div class="hsIcon">✓</div><div>${esc(t('hsIOS3'))}</div></li></ol></div>`;
+  body+=`<button class="big" id="copyCodeBtn">📋 ${esc(t('copyCode'))}</button>`}
+ else{
+  if(deferredPrompt)body=`<p>${esc(t('homeTitle',{r:r.name}))}</p><button class="big" id="installBtn">📲 ${esc(t('hsAdd'))}</button>`;
+  else body=`<p>${esc(t('hsAndroidGuide',{r:r.name}))}</p>`;
+  body+=`<button id="copyCodeBtn">📋 ${esc(t('copyCode'))}</button>`}
+ B.innerHTML=`<div class="q">${esc(t('homeTitle',{r:r.name}))}</div><div class="bigicon" style="background:${r.color}">${r.emoji}</div><h3 style="text-align:center">${esc(r.name)}</h3>${body}
+  ${(!NATIVE&&!isStandalone())?`<button class="ghost" id="notNow">${esc(t('later'))}</button>`:''}
+  <button class="big" id="openR">${esc(t('openR'))}</button>`+(isChildMode()?'':`<button id="sendChildHS">📤 ${esc(t('sendChild'))}</button>`)+(setting('mode','touch')==='voice'?`<p class="muted">${esc(dev==='ios'?t('speechIOS'):t('speechAndroid'))}</p>`:'');
+ if($('pinBtn'))$('pinBtn').onclick=()=>NP('RoutineShortcuts').pin({id:r.id,label:r.name,emoji:r.emoji,color:r.color}).catch(e=>alert(e.message||e));
+ if($('cpBtn'))$('cpBtn').onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText($('lnk').textContent);$('cpBtn').textContent=t('copied')};
+ if($('installBtn'))$('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();try{await deferredPrompt.userChoice}catch(e){}deferredPrompt=null;$('installBtn').hidden=true};
+ if($('copyCodeBtn'))$('copyCodeBtn').onclick=copyRoutineCode;
+ if($('notNow'))$('notNow').onclick=()=>{wiz={};home()};
+ if($('sendChildHS'))$('sendChildHS').onclick=()=>sendToChild(r);
+ $('openR').onclick=()=>{if(!canRun())return show('paywall');if(isChildMode())return childHome();start(r.id)}}
+// ---------- launching straight into a routine ----------
+async function routeLaunch(url){const{id,data,share}=await extractPack(url);if(!id&&!(data&&data.r))return false;
+ const rid=id||(data&&data.r&&data.r.id);const empty=!Object.keys(allR()).length;
+ let imported=false;
+ const wantChild=!!share; // ?share=1 or packed payload → child device
+ if(data&&data.r){
+  if(share){ // parent→child / packed link: always import (ask if something different already exists)
+   const ex=allR()[rid];const different=ex&&JSON.stringify(ex.steps)!==JSON.stringify((data.r.steps||[]));
+   if(ex&&different&&!confirm(t('loadFromParent'))){if(wantChild){enableChildMode();if(ex){ex.fromShare=true;const R=allR();R[rid]=ex;saveR(R)}}}
+   else imported=!!importSetup(data,rid,wantChild);
+  }else if(empty||!allR()[rid])imported=!!importSetup(data,rid,false)}
+ if(wantChild)enableChildMode();
+ const r=allR()[rid];if(!r)return false;
+ if(imported||share)try{sessionStorage.setItem('dmShareImport',rid)}catch(e){}
+ if(!canRun()){show('paywall');return true}
+ // Shared / packed open in browser → Add to Home Screen guide (child-safe: no Send / editor)
+ if(!NATIVE&&!isStandalone()&&(share||imported||!!data)){OB_R=r;wiz={page:'hs',single:true,child:isChildMode()};show('ob');renderOb();return true}
+ // Standalone / native: child mode → kid home; parent pin → start
+ if(NATIVE||isStandalone()){if(isChildMode()){childHome();return true}start(rid);return true}
+ if(isChildMode()){childHome();return true}
+ setHeadFor(r);$('lIcon').style.background=r.color;$('lIcon').textContent=r.emoji;$('lName').textContent=r.name;$('lStart').onclick=()=>start(rid);show('launch');return true}
+// ---------- weather (optional, device location) ----------
+// Temperature unit follows where the device actually is (not the UI language). Decisions are made in °C; °F only for speaking.
+const F_COUNTRIES=['US','PR','GU','VI','AS','MP','UM','LR','BS','BZ','KY','PW','FM','MH'];
+let TEMP_C=null;
+function regionFromDevice(){for(const l of [...(navigator.languages||[]),navigator.language,Intl.DateTimeFormat().resolvedOptions().locale]){try{const r=new Intl.Locale(l).maximize().region;if(r&&/^[A-Z]{2}$/.test(r))return r}catch(e){}}return null}
+function useF(){const o=setting('tempUnit','auto');if(o==='F')return true;if(o==='C')return false;const c=setting('country',null)||regionFromDevice();return F_COUNTRIES.includes(c)}
+function timeoutFetch(url,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);return fetch(url,{signal:c.signal}).finally(()=>clearTimeout(t))}
+async function countryFromCoords(lat,lon){try{const d=await (await timeoutFetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`,4000)).json();
+  if(d&&/^[A-Z]{2}$/.test(d.countryCode||'')){LS.set('country',d.countryCode);return d.countryCode}}catch(e){}return null}
+function getWeather(){if(!setting('weather',true)||!navigator.geolocation)return;
+ navigator.geolocation.getCurrentPosition(p=>{const lat=p.coords.latitude.toFixed(2),lon=p.coords.longitude.toFixed(2);countryFromCoords(lat,lon);
+  timeoutFetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m`,6000).then(r=>r.json()).then(d=>TEMP_C=d.current.temperature_2m).catch(()=>{})},
+  ()=>{},{timeout:8000,maximumAge:36e5})}
+// ---------- runner ----------
+let R=null,RS=null,steps=[],i=0,active=false,paused=false,voice=false,tm=[],check,run=0;
+function weatherText(){if(TEMP_C==null)return RS.wNone;const n=Math.round(useF()?TEMP_C*9/5+32:TEMP_C);return(TEMP_C<10?RS.wCold:RS.wMild).replace('{t}',n)} // cold < 10 °C (= 50 °F)
+const warm=()=>TEMP_C!=null&&TEMP_C>=18.3; // skip jacket at 18.3 °C (= 65 °F) or warmer
+const T=x=>typeof x==='string'?x:x.weather?weatherText():x.text;
+const later=(ms,f)=>{const r=run;tm.push(setTimeout(()=>{if(active&&!paused&&r===run)f()},ms))};
+const clr=()=>{tm.forEach(clearTimeout);tm=[];clearTimeout(check)};
+async function say(x){if(voice)await Speech.pauseListening();await Speech.speak(x);if(voice&&active)Speech.listen()}
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+
+// Local-time greeting: morning <12, afternoon <17, evening otherwise. Falls back to greetHi / en.
+function dayPart(){const h=new Date().getHours();return h<12?'M':h<17?'A':'E'}
+function routineGreeting(r,nm){const RS=SL(r.lang||L),EN=I18N.en,n=nm?', '+nm:'',p=dayPart();
+ if(r.calm){const tod=RS['tod'+p]||RS.todHi||EN['tod'+p]||EN.todHi||'Hi';
+  return (RS.greetB||EN.greetB||'Hi{n}!').replace(/\{tod\}/g,tod).replace(/\{n\}/g,n)}
+ const k={M:'greetM',A:'greetA',E:'greetE'}[p];
+ return (RS[k]||RS.greetHi||EN[k]||EN.greetHi||EN.greetM||'Hi{n}!').replace(/\{n\}/g,n)}
+
+let greetingPhase=false; // true while speaking greeting before step 0 — Done must NOT skip step 1
+async function start(id){const r=allR()[id];if(!r)return home();R=r;RS=SL(r.lang||L);Speech.lang=RS.tts;voice=setting('mode','touch')==='voice';
+ document.documentElement.dir=RS.rtl?'rtl':'ltr';Speech.unlock();getWeather();show('run');$('rname').textContent=r.emoji+' '+r.name;$('status').textContent='';
+ ['done','back','repeat','pause','stop'].forEach(k=>document.querySelectorAll(`#run [data-t=${k}]`).forEach(e=>e.textContent=RS[k]));
+ if(voice){const ok=await Speech.micAvailable();if(!ok){voice=false;$('status').textContent=RS.micNo}}
+ const d=new Date().getDay();Speech.onHeard=heard;
+ // Drop empty/day-filtered steps so index 0 is always a real cue
+ steps=(r.steps||[]).filter(x=>!(x&&x.days&&x.days.length&&!x.days.includes(d))&&!(x&&x.weather&&!setting('weather',true)))
+  .map(x=>typeof x==='string'?{text:x}:x).filter(x=>x&&(x.weather||String(x.text||'').trim()));
+ if(!steps.length){$('step').textContent='…';active=false;return home()}
+ i=0;active=true;paused=false;run++;keepAwake();greetingPhase=true;const nm=kidName(r.kid||activeKid());
+ const greet=routineGreeting(r,nm)||(RS.greetHi||I18N.en.greetHi||'Hi!').replace(/\{n\}/g,nm?', '+nm:'');
+ $('step').textContent=greet; // show greeting (was blank "…" while await say blocked first step)
+ // Schedule step 1 WITHOUT waiting for TTS — iOS can hang/delay speak; Done during await used to skip step 0
+ const my=run;later(Math.min(4500,1200+greet.length*40),()=>{if(active&&!paused&&run===my&&i===0&&greetingPhase){greetingPhase=false;step(RS.first)}});
+ try{await say(greet)}catch(e){}
+ if(active&&run===my&&i===0&&greetingPhase){/* TTS finished early — still wait for timer unless Done already advanced */}}
+// "Out the door by": gentle pace cues. Behind = less than ~1.5 min per remaining step (or past the time).
+function pace(){if(!R.doneBy)return '';const [h,m]=R.doneBy.split(':').map(Number),d=new Date();d.setHours(h,m,0,0);const left=Math.round((d-Date.now())/6e4),rem=steps.length-i;
+ if(left<-60||left>240)return '';if(left<=0||left<rem*1.5){if(i-(R._lastBehind??-9)>=2){R._lastBehind=i;return ' '+RS.behind}return ''}
+ if(i%3===0)return ' '+RS.minsLeft.replace('{m}',left);return ''}
+function bar(){$('bar').style.width=(i/steps.length*100)+'%'}
+async function step(intro){clr();greetingPhase=false;if(i<steps.length&&steps[i].weather&&warm())steps.splice(i,1);if(i>=steps.length)return finish();
+ const x=steps[i],me=i,r=run,txt=T(x)||'…',ad=typeof x==='object'&&x.auto===true;$('step').textContent=txt;bar();
+ await say((intro?intro+' ':'')+txt+(ad?'':' '+(voice?RS.sayDone:RS.pressDone)));if(i!==me||r!==run)return;
+ if(typeof x==='object'&&x.wait>0&&x.auto)later(x.wait*1000,()=>{if(i===me)next()});arm()}
+function arm(){clearTimeout(check);const ms=(+setting('checkin',120))*1000;if(!ms)return;check=setTimeout(()=>{if(active&&!paused&&i<steps.length){say(RS.still.replace('{s}',T(steps[i]))+' '+(voice?RS.sayDone:RS.pressDone));arm()}},ms)}
+function next(){if(!active||paused)return;clr();
+ // During greeting, Done means "start step 1" — do not increment past it (was skipping first step)
+ if(greetingPhase){greetingPhase=false;i=0;return step(RS.first)}
+ i++;if(i>=steps.length)return finish();
+ const pm=setting('praise','every'),give=pm==='every'||(pm==='some'&&i%3===0);const p=give?pick(R.calm?RS.calm:RS.praise):'';
+ step((p+(i===steps.length-1&&pm!=='end'?' '+RS.last:'')+pace()).trim())}
+async function finish(){clr();$('bar').style.width='100%';$('step').textContent=R.calm?'🌙':'🎉';active=false;await Speech.pauseListening();await Speech.speak(R.calm?RS.night:RS.finish);releaseWake()}
+async function stop(){active=false;run++;clr();await Speech.pauseListening();Speech.stopSpeaking();await Speech.speak(RS.stopped);releaseWake();home()}
+function heard(x){x=(x||'').toLowerCase().trim();$('status').textContent='🎤 '+x;if(!active||paused)return;if(RS.dw.some(w=>x.includes(w)))next()}
+$('doneBtn').onclick=()=>next();
+document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{const c=b.dataset.c;
+ if(c==='stop')return stop();if(!active)return;if(c==='repeat')return step('');if(c==='back'){greetingPhase=false;i=Math.max(0,i-1);return step('')}
+ if(c==='pause'){paused=!paused;$('pauseBtn').textContent=paused?RS.resume:RS.pause;if(paused){clr();Speech.stopSpeaking();Speech.pauseListening()}else{run++;step('')}}});
+let wake;async function keepAwake(){try{if(NP('KeepAwake'))return NP('KeepAwake').keepAwake();if('wakeLock'in navigator)wake=await navigator.wakeLock.request('screen')}catch(e){}}
+function releaseWake(){try{if(NP('KeepAwake'))return NP('KeepAwake').allowSleep();wake&&wake.release()}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&active)keepAwake()});
+// ---------- step editor (used by review page and ✏️) ----------
+function renderSteps(box,r){const dn=dayNames();box.innerHTML='<ol class="tl" style="padding:0"></ol><div class="row"><button class="as">'+esc(t('add'))+'</button><button class="aw">'+esc(t('weatherStep'))+'</button></div><p class="muted small">⏱ '+esc(t('timerEdit')||t('timer'))+'</p>';
+ const ol=box.querySelector('ol');r.steps=r.steps.map(x=>typeof x==='string'?{text:x}:x);
+ r.steps.forEach((x,n)=>{const li=document.createElement('li');li.style.display='block';
+  li.innerHTML=(x.weather?`<b>🌦 ${esc(t('weatherStep'))}</b>`:`<input type="text" class="tx" style="width:100%;font-size:1em;padding:6px">`)+`<div class="opts row small">⏱ <input type="number" min="0" step="1" class="wt" style="width:64px" placeholder="0" inputmode="numeric"> <span class="muted">${esc(t('minutes'))}</span> `+
+   dn.map((d,j)=>`<label class="row" style="margin:0"><input type="checkbox" class="dy" data-d="${j}">${d}</label>`).join('')+`<button class="up">↑</button><button class="dn">↓</button><button class="rm">✕</button></div>`;
+  if(!x.weather)li.querySelector('.tx').value=x.text||'';li.querySelector('.wt').value=x.wait?Math.round(x.wait/60):'';
+  li.querySelectorAll('.dy').forEach(c=>c.checked=!x.days||!x.days.length||x.days.includes(+c.dataset.d));
+  const re=f=>()=>{collectSteps(box,r);f();renderSteps(box,r)};
+  li.querySelector('.up').onclick=re(()=>{if(n>0)[r.steps[n-1],r.steps[n]]=[r.steps[n],r.steps[n-1]]});
+  li.querySelector('.dn').onclick=re(()=>{if(n<r.steps.length-1)[r.steps[n+1],r.steps[n]]=[r.steps[n],r.steps[n+1]]});
+  li.querySelector('.rm').onclick=re(()=>r.steps.splice(n,1));ol.appendChild(li)});
+ box.querySelector('.as').onclick=()=>{collectSteps(box,r);r.steps.push({text:''});renderSteps(box,r)};
+ box.querySelector('.aw').onclick=()=>{collectSteps(box,r);r.steps.push({weather:true});renderSteps(box,r)}}
+function collectSteps(box,r){[...box.querySelectorAll('ol>li')].forEach((li,n)=>{const x=r.steps[n];if(!x)return;
+ if(!x.weather)x.text=li.querySelector('.tx').value;const mins=+li.querySelector('.wt').value||0;if(mins>0){x.wait=mins*60;x.auto=x.auto||true}else{delete x.wait;delete x.auto} // minutes in UI, seconds stored (same as wizard)
+ const d=[...li.querySelectorAll('.dy')].filter(c=>c.checked).map(c=>+c.dataset.d);if(d.length===7||!d.length)delete x.days;else x.days=d});
+ r.steps=r.steps.filter(x=>x.weather||(x.text||'').trim()!==''||!box.isConnected)}
+let EDR=null;
+function openEditor(id){EDR=clone(allR()[id]);show('edit');applyLang();$('erName').value=EDR.name;$('erDoneBy').value=EDR.doneBy||'';renderSteps($('erSteps'),EDR)}
+$('erSave').onclick=()=>{collectSteps($('erSteps'),EDR);EDR.name=$('erName').value.trim()||EDR.name;EDR.doneBy=$('erDoneBy').value;const R=allR();R[EDR.id]=EDR;saveR(R);showHSAfterSave(allR()[EDR.id])};
+$('erHS').onclick=()=>$('erSave').onclick();
+$('erDel').onclick=()=>{if(!confirm(t('del')+'?'))return;const R=allR();delete R[EDR.id];saveR(R);home()};
+// ---------- self-update (critical for iOS home-screen / standalone) ----------
+function paintVer(){const a=$('aboutVer'),f=$('appVerLabel');if(a)a.textContent=APP_VER;if(f)f.textContent='v'+APP_VER}
+async function nukeShellAndReload(){
+  try{if('caches'in window){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)))}}catch(e){}
+  try{const regs=await navigator.serviceWorker.getRegistrations();await Promise.all(regs.map(r=>r.unregister()))}catch(e){}
+  try{sessionStorage.setItem('dmReloaded',APP_VER)}catch(e){}
+  location.reload()
+}
+async function ensureFreshShell(){
+  paintVer();
+  if(NATIVE||!('serviceWorker'in navigator)) { try{localStorage.setItem('appShellVer',APP_VER)}catch(e){} return false; }
+  try{
+    let refreshing=false;
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{if(refreshing)return;refreshing=true;location.reload()});
+    const reg=await navigator.serviceWorker.register('sw.js?v='+APP_VER,{updateViaCache:'none'});
+    if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});
+    reg.addEventListener('updatefound',()=>{const w=reg.installing;if(!w)return;w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)w.postMessage({type:'SKIP_WAITING'})})});
+    try{await reg.update()}catch(e){}
+  }catch(e){}
+  try{
+    const prev=sessionStorage.getItem('dmReloaded');
+    const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'});
+    if(r.ok){const j=await r.json();
+      if(j&&j.v&&j.v!==APP_VER){
+        if(prev===j.v)return false;
+        await nukeShellAndReload();return true}}
+  }catch(e){}
+  try{localStorage.setItem('appShellVer',APP_VER)}catch(e){}
+  return false
+}
+function armStandaloneUpdateChecks(){
+  if(NATIVE||!('serviceWorker'in navigator))return;
+  const poke=()=>navigator.serviceWorker.getRegistration().then(reg=>reg&&reg.update()).catch(()=>{});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){poke();queueSyncUrl()}});
+  if(isStandalone()){poke();setInterval(poke,60e3)}
+}
+// ---------- boot ----------
+(async()=>{
+ if(await ensureFreshShell())return;
+ armStandaloneUpdateChecks();
+ migrateChildMode();wireParentEscape();
+ const launched=await routeLaunch(location.href);
+ await SUB.init();applyLang();paintVer();wireParentEscape();
+ if(NATIVE&&NP('App')){NP('App').addListener('appUrlOpen',e=>routeLaunch(e.url));try{const u=await NP('App').getLaunchUrl();if(u&&u.url&&await routeLaunch(u.url))return}catch(e){}}
+ if(launched)return;
+ if(!Object.keys(allR()).length){
+  if(isStandalone())return showBringOver();
+  return startWizard(false)}
+ home();
+})();

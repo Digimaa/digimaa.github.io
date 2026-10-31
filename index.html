@@ -1,0 +1,62 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>DigiMaa</title><meta name="author" content="Net Zero Strategic, LLC"><meta name="copyright" content="© 2026 Net Zero Strategic, LLC">
+<meta name="description" content="DigiMaa: step-by-step spoken routines with praise after every step. By Net Zero Strategic, LLC.">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="DigiMaa" id="appTitle"><meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#4f46e5"><link rel="manifest" href="manifest.webmanifest" id="manifest"><link rel="icon" href="icon.svg"><link rel="apple-touch-icon" href="icon-192.png" id="touchIcon">
+<link rel="stylesheet" href="style.css?v=1.2.3"></head><body>
+<header><b data-t="title" id="appLogo">DigiMaa</b><span id="trialTag" class="small"></span></header>
+<main>
+<section id="ob" hidden><div class="prog"><span id="obProg"></span></div><div class="dots" id="obDots"></div><div id="obBody"></div>
+ <div class="row nav"><button id="obBack">←</button><button id="obNext" class="primary" data-t="next"></button></div></section>
+<section id="home" hidden>
+ <div id="subBanner" class="banner" hidden></div><div id="kidBar" class="chips"></div><h2 data-t="myR"></h2><div id="rlist"></div>
+ <button id="newR" class="add">＋ <span data-t="newR"></span></button>
+ <label><span data-t="lang"></span><select id="lang"></select></label>
+ <label><span data-t="mode"></span><select id="mode"><option value="touch" data-t="touch"></option><option value="voice" data-t="voice"></option></select></label>
+ <label><span data-t="childQ"></span><input id="kid" autocomplete="off"></label>
+ <label><span data-t="tempSet"></span><select id="tempSel"><option value="auto" data-t="tAuto"></option><option value="C">°C</option><option value="F">°F</option></select></label>
+ <label><span data-t="praiseSet"></span><select id="praiseSel"><option value="every" data-t="pEvery"></option><option value="some" data-t="pSome"></option><option value="end" data-t="pEnd"></option></select></label>
+ <label><span data-t="checkSet"></span><select id="checkSel"><option value="120" data-t="ckYes"></option><option value="0" data-t="ckOff"></option></select></label>
+ <label class="row"><input type="checkbox" id="useWeather"> <span data-t="weatherStep"></span></label>
+ <div class="subbox"><b data-t="subSec"></b><div id="subLine" class="muted"></div><a id="manageSub" target="_blank" rel="noopener" data-t="manage"></a></div>
+ <p class="links"><a href="#" id="toAbout" data-t="about"></a></p>
+</section>
+<section id="childHome" hidden>
+ <div id="childGreet" class="childGreet"></div>
+ <div id="childList"></div>
+ <p class="links childParent"><a href="#" id="toParent" data-t="parentLink">Parent</a></p>
+</section>
+<section id="launch" hidden><div id="lIcon" class="bigicon"></div><h2 id="lName"></h2><button id="lStart" class="big" data-t="tapStart"></button><p class="links"><a href="./" data-t="myR"></a></p></section>
+<section id="run" hidden>
+ <div id="rname" class="muted"></div><div class="barw"><div id="bar"></div></div>
+ <div id="step"></div><div id="status" class="muted"></div>
+ <button id="doneBtn" class="big" data-t="done"></button>
+ <div class="row3"><button data-c="back" data-t="back"></button><button data-c="repeat" data-t="repeat"></button><button data-c="pause" id="pauseBtn" data-t="pause"></button><button data-c="stop" data-t="stop"></button></div>
+</section>
+<section id="edit" hidden><input id="erName"><label><span data-t="doneBy"></span><input type="time" id="erDoneBy"></label><div id="erSteps"></div>
+ <div class="row"><button id="erSave" class="primary" data-t="save"></button><button id="erHS" data-t="pin"></button><button id="erDel" data-t="del"></button></div>
+ <p class="links"><a href="#" class="toHome">←</a></p></section>
+<section id="paywall" hidden>
+ <h2 data-t="subTitle"></h2><p data-t="subBody"></p>
+ <button class="big" id="buyM" data-t="monthly"></button><button class="big" id="buyY" data-t="yearly"></button>
+ <button id="trial" data-t="trial"></button><button id="restore" data-t="restore"></button>
+ <p class="muted small">Subscriptions renew automatically until cancelled in your App Store / Google Play account settings. Payment is charged to your store account at confirmation. <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></p>
+ <p class="links"><a href="#" class="toHome" data-t="later"></a></p>
+</section>
+<section id="bring" hidden>
+ <h2 data-t="bringTitle"></h2><p data-t="bringBody"></p>
+ <textarea id="bringIn" rows="5" style="width:100%;font-size:14px" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+ <button class="big" id="bringGo" data-t="bringGo"></button>
+ <p class="muted small" data-t="bringHelp"></p>
+</section>
+<section id="about" hidden>
+ <h2>DigiMaa</h2><p>Version <span id="aboutVer">1.2.3</span></p><p>Published by <b>Net Zero Strategic, LLC</b>.</p>
+ <p>© 2026 Net Zero Strategic, LLC. All rights reserved.</p>
+ <p><a href="privacy.html" data-t="privacy"></a> · <a href="terms.html" data-t="terms"></a></p>
+ <p class="links"><a href="#" class="toHome">←</a></p>
+</section>
+</main><div id="sheet" class="sheet" hidden><div class="sheetIn" id="sheetIn"></div></div>
+<footer>© 2026 Net Zero Strategic, LLC · <span id="appVerLabel">v1.2.3</span></footer>
+<script src="i18n.js?v=1.2.3"></script><script src="i18n-ob.js?v=1.2.3"></script><script src="i18n-sub.js?v=1.2.3"></script><script src="i18n-ux.js?v=1.2.3"></script><script src="i18n-ux2.js?v=1.2.3"></script><script src="i18n-hs.js?v=1.2.3"></script><script src="subscription.js?v=1.2.3"></script><script src="speech.js?v=1.2.3"></script><script src="app.js?v=1.2.3"></script>
+</body></html>
