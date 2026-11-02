@@ -1,7 +1,7 @@
 // DigiMaa SW v13: network-first shell; never cache version.json; skipWaiting+claim.
 const C='digimaa-v15';
 const VER='1.2.5';
-const SHELL=['./','index.html','style.css','i18n.js','i18n-ob.js','i18n-sub.js','i18n-ux.js','i18n-ux2.js','i18n-hs.js','speech.js','subscription.js','app.js','icon-192.png','icon-512.png','version.json'];
+const SHELL=['./','index.html','welcome.html','welcome.css','welcome.js','welcome-gate.js','style.css','i18n.js','i18n-ob.js','i18n-sub.js','i18n-ux.js','i18n-ux2.js','i18n-hs.js','speech.js','subscription.js','app.js','icon-192.png','icon-512.png','version.json'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL)).catch(()=>{}))});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('message',e=>{if(e.data&&e.data.type==='SKIP_WAITING')self.skipWaiting()});
