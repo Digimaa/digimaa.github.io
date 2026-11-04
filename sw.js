@@ -1,6 +1,6 @@
 // DigiMaa SW v13: network-first shell; never cache version.json; skipWaiting+claim.
-const C='digimaa-v13';
-const VER='1.2.4';
+const C='digimaa-v15';
+const VER='1.2.5';
 const SHELL=['./','index.html','style.css','i18n.js','i18n-ob.js','i18n-sub.js','i18n-ux.js','i18n-ux2.js','i18n-hs.js','speech.js','subscription.js','app.js','icon-192.png','icon-512.png','version.json'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL)).catch(()=>{}))});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
@@ -11,7 +11,7 @@ self.addEventListener('fetch',ev=>{const u=new URL(ev.request.url);if(ev.request
  const base=self.registration.scope;
  if(u.pathname.endsWith('/version.json')){ev.respondWith(fetch(new Request(ev.request,{cache:'no-store'})).catch(()=>caches.match('version.json')));return}
  if(u.pathname.endsWith('/manifest.webmanifest')&&u.searchParams.get('r')){const r=u.searchParams.get('r'),n=u.searchParams.get('n')||'Routine',e=u.searchParams.get('e')||'⭐',c=u.searchParams.get('c')||'#4f46e5',d=u.searchParams.get('d')||'',q=`e=${encodeURIComponent(e)}&c=${encodeURIComponent(c)}`;
-  const start=base+'?r='+encodeURIComponent(r)+(d?'&d='+d:'');
+  const start=base+(u.searchParams.get('ch')==='1'?'?child=1&share=1&r=':'?r=')+encodeURIComponent(r)+(d?'&d='+d:'');
   ev.respondWith(new Response(JSON.stringify({id:'digimaa-'+r,name:n,short_name:n.length>12?n.slice(0,12):n,start_url:start,scope:base,display:'standalone',background_color:'#f5f5ff',theme_color:c,description:'DigiMaa © Net Zero Strategic, LLC',
    icons:[{src:base+'routine-icon-192.png?'+q,sizes:'192x192',type:'image/png'},{src:base+'routine-icon-512.png?'+q,sizes:'512x512',type:'image/png',purpose:'any maskable'}]}),{headers:{'Content-Type':'application/manifest+json'}}));return}
  const m=/routine-icon-(\d+)\.png$/.exec(u.pathname);if(m){ev.respondWith(icon(u.searchParams.get('e')||'⭐',u.searchParams.get('c')||'#4f46e5',+m[1]));return}

@@ -1,5 +1,5 @@
 // DigiMaa – onboarding wizard, multi-routine home, per-routine launch, runner, editor. © Net Zero Strategic, LLC
-const APP_VER='1.2.4';
+const APP_VER='1.2.5';
 const $=id=>document.getElementById(id),clone=o=>JSON.parse(JSON.stringify(o)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const nav2=(navigator.language||'en').slice(0,2);
@@ -12,7 +12,9 @@ const isIOSSafari=()=>{const ua=navigator.userAgent;return IOS_UA&&/Safari/i.tes
 let deferredPrompt=null;
 if(!NATIVE)window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e});
 // iOS Safari: <link rel=manifest> start_url overrides the current URL on Add to Home Screen — remove it so ?r=…#d=… is what gets pinned.
-(function(){if(!IOS_UA)return;const m=$('manifest');if(m)m.remove();document.querySelectorAll('link[rel="manifest"]').forEach(l=>l.remove())})();
+// v1.2.5: keep a manifest WITHOUT start_url on iOS → Safari pins the CURRENT URL (with ?child=1&share=1&r=&d=) and opens standalone.
+function ensureStaticManifest(){let m=$('manifest');if(!m){m=document.createElement('link');m.rel='manifest';m.id='manifest';document.head.appendChild(m)}if(m.getAttribute('href')!=='manifest.webmanifest')m.href='manifest.webmanifest'}
+(function(){if(IOS_UA)ensureStaticManifest()})();
 let _syncT=null;function queueSyncUrl(r){if(NATIVE||isStandalone())return;clearTimeout(_syncT);_syncT=setTimeout(()=>syncHomeUrl(r),0)}
 // ---------- storage ----------
 const allR=()=>LS.get('routines',{});
@@ -239,7 +241,8 @@ function launchUrl(r){const d=encodePack(packSetup(r)),id=encodeURIComponent(r.i
 // child=1 FIRST so truncated iOS home-screen URLs still force child mode in that storage
 function childPinUrl(r,packed){r=r||primaryRoutine();const base=location.origin+location.pathname;
   if(!r)return base+'?child=1';
-  const d=packed||encodePack(packSetup(r));
+  // Prefer the parent's compressed pack (short URL → iOS pins it intact)
+  const d=packed||LS.get('pin_'+r.id,null)||encodePack(packSetup(r));
   return base+'?child=1&share=1&r='+encodeURIComponent(r.id)+'&d='+encodeURIComponent(d)}
 const PUBLIC_BASE='https://digimaa.app/';
 function shareChildUrl(r,packed){r=r||primaryRoutine();if(!r)return PUBLIC_BASE+'?child=1';
@@ -264,21 +267,23 @@ async function sendToChild(r){markParentDevice();r=resolveShareRoutine(r);if(!r)
   const ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}
 function primaryRoutine(){const R=allR();let kid=null;try{kid=activeKid()}catch(e){}
   const list=Object.values(R).filter(r=>!r.kid||!kid||r.kid===kid);return list[0]||Object.values(R)[0]||null}
+function pinUrlKeep(r){try{const u=new URL(location.href);return !!r&&u.searchParams.get('child')==='1'&&u.searchParams.get('r')===r.id&&!!u.searchParams.get('d')}catch(e){return false}}
 function syncHomeUrl(r){if(NATIVE||isStandalone())return;r=r||primaryRoutine();
  if(!r){if(!/\?r=/.test(location.search)&&!/#d=/.test(location.hash))return;history.replaceState(null,'',location.pathname);setHeadFor(null);return}
  // Never strip child=1/share=1 — iOS Add-to-Home-Screen pins whatever URL is showing
  const pinChild=isChildMode()||!!LS.get('seenShare',false)||/[?&](child|share)=1/.test(location.search);
+ if(pinChild&&pinUrlKeep(r)){setHeadFor(r);return}
  const url=pinChild?childPinUrl(r):launchUrl(r);
  if(location.href!==url)history.replaceState(null,'',url);setHeadFor(r)}
 function iconDataUrl(r,size=180){const c=document.createElement('canvas');c.width=c.height=size;const g=c.getContext('2d');g.fillStyle=r.color||'#4f46e5';g.fillRect(0,0,size,size);
  g.font=`${size*.6}px serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(r.emoji||'⭐',size/2,size*.55);return c.toDataURL('image/png')}
 function setHeadFor(r){document.title=r?r.name:'DigiMaa';if($('appTitle'))$('appTitle').content=r?r.name:'DigiMaa';
  if($('touchIcon'))$('touchIcon').href=r?iconDataUrl(r,180):'icon-192.png';
- if(IOS_UA){const m=$('manifest');if(m)m.remove();document.querySelectorAll('link[rel="manifest"]').forEach(l=>l.remove());return}
+ if(IOS_UA){ensureStaticManifest();return}
  let man=$('manifest');if(!man){man=document.createElement('link');man.rel='manifest';man.id='manifest';document.head.appendChild(man)}
  if(!r){man.href='manifest.webmanifest';return}
  const d=encodePack(packSetup(r));
- man.href=`manifest.webmanifest?r=${encodeURIComponent(r.id)}&n=${encodeURIComponent(r.name)}&e=${encodeURIComponent(r.emoji||'⭐')}&c=${encodeURIComponent(r.color||'#4f46e5')}&d=${d}`}
+ man.href=`manifest.webmanifest?${(isChildMode()||LS.get('seenShare',false))?'ch=1&':''}r=${encodeURIComponent(r.id)}&n=${encodeURIComponent(r.name)}&e=${encodeURIComponent(r.emoji||'⭐')}&c=${encodeURIComponent(r.color||'#4f46e5')}&d=${d}`}
 function importSetup(data,id,asChild){if(!data||!data.r)return false;data=unpackSetup(data);const rid=id||data.r.id;if(!rid)return false;
   if(data.lang&&I18N[data.lang]){L=data.lang;LS.set('lang',L)}
   if(data.mode)LS.set('mode',data.mode);if(data.tempUnit)LS.set('tempUnit',data.tempUnit);if(data.praise)LS.set('praise',data.praise);
@@ -293,6 +298,8 @@ function routineCode(r){r=resolveShareRoutine(r);return r?encodePack(packSetup(r
 function copyRoutineCode(){const code=routineCode();if(!code)return;const done=()=>{[$('copyCodeBtn'),$('copyCodeHome')].forEach(b=>{if(b)b.textContent=t('codeCopied')})};
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(code).then(done).catch(fallback);else fallback();
   function fallback(){const ta=document.createElement('textarea');ta.value=code;document.body.appendChild(ta);ta.select();try{document.execCommand('copy')}catch(e){}ta.remove();done()}}
+function showAskResend(){applyLang();show('bring');const sec=$('bring');
+  sec.innerHTML='<div class="childGreet">👋</div><h2 style="text-align:center">'+esc(t('askResendT'))+'</h2><p style="text-align:center;font-size:1.2em">'+esc(t('askResendB'))+'</p>'}
 function showBringOver(){applyLang();show('bring');$('bringIn').value='';$('bringGo').onclick=async()=>{const raw=($('bringIn').value||'').trim();
   let data=await decodePackAny(raw);if(!data){const ex=await extractPack(raw.startsWith('http')?raw:PUBLIC_BASE+'?'+raw);data=ex.data;if(data&&ex.id&&data.r&&!data.r.id)data.r.id=ex.id}
   if(!data||!data.r){alert(t('bringHelp'));return}
@@ -301,7 +308,7 @@ function showHSAfterSave(r){if(!r)return home();if(NATIVE||isStandalone())return
 function renderHS(B,r){const dev=setting('device',wiz.device||(IOS_UA?'ios':'android'));setHeadFor(r);
  // Keep child=1(+pack) in the URL so iOS Add-to-Home-Screen pins child mode into standalone storage
  const pinChild=!!(isChildMode()||wiz.child||wiz.share||/[?&](child|share)=1/.test(location.search));
- if(!NATIVE)history.replaceState(null,'',pinChild?childPinUrl(r):launchUrl(r));
+ if(!NATIVE&&!(pinChild&&pinUrlKeep(r)))history.replaceState(null,'',pinChild?childPinUrl(r):launchUrl(r));
  let body='';
  if(PLATFORM==='android')body=`<p>${esc(t('hsNativeA',{r:r.name}))}</p><button class="big" id="pinBtn">📲 ${esc(t('pin'))}</button>`;
  else if(PLATFORM==='ios')body=`<p>${esc(t('hsNativeI',{r:r.name}))}</p><code id="lnk">digimaa://run?r=${r.id}</code><button id="cpBtn">${esc(t('copyLink'))}</button>`;
@@ -331,6 +338,9 @@ function renderHS(B,r){const dev=setting('device',wiz.device||(IOS_UA?'ios':'and
  $('openR').onclick=()=>{if(!canRun())return show('paywall');if(isChildMode())return childHome();start(r.id)}}
 // ---------- launching straight into a routine ----------
 async function routeLaunch(url){const{id,data,share,child}=await extractPack(url);
+ try{const dq=new URL(url,location.origin).searchParams.get('d');const pid=id||(data&&data.r&&data.r.id);if(dq&&pid&&data&&data.r&&dq.length<4000)LS.set('pin_'+pid,dq)}catch(e){}
+ // Standalone child icon whose link carried nothing usable → friendly message, never paste
+ if((child||share)&&!(data&&data.r)&&!Object.keys(allR()).length&&(NATIVE||isStandalone())){enableChildMode();showAskResend();return true}
  // child=1 alone (e.g. truncated pin) still forces child mode in THIS storage profile
  if(child||share){LS.set('seenShare',true);enableChildMode()}
  if(!id&&!(data&&data.r)){if(child&&isChildMode()){childHome();return true}return false}
@@ -498,7 +508,7 @@ function armStandaloneUpdateChecks(){
  if(NATIVE&&NP('App')){NP('App').addListener('appUrlOpen',e=>routeLaunch(e.url));try{const u=await NP('App').getLaunchUrl();if(u&&u.url&&await routeLaunch(u.url))return}catch(e){}}
  if(launched)return;
  if(!Object.keys(allR()).length){
-  if(isStandalone())return showBringOver();
+  if(isStandalone()&&isChildMode())return showAskResend();
   return startWizard(false)}
  home();
 })();

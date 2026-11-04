@@ -23,3 +23,4 @@ const TEMPT={en:["Temperature","Auto (where you are)"],es:["Temperatura","Autom�
 pt:["Temperatura","Automática (pelo local)"],it:["Temperatura","Automatica (in base al luogo)"],hi:["तापमान","अपने आप (आप जहाँ हैं)"],ta:["வெப்பநிலை","தானியங்கி (இருக்குமிடம்)"],te:["ఉష్ణోగ్రత","ఆటోమేటిక్ (మీరున్న చోటు)"],
 kn:["ತಾಪಮಾನ","ಸ್ವಯಂ (ನೀವಿರುವ ಸ್ಥಳ)"],ml:["താപനില","സ്വയം (നിങ്ങളുള്ള സ്ഥലം)"],zh:["温度","自动（按所在地）"],ja:["気温の単位","自動（現在地）"],ko:["온도","자동 (현재 위치)"],ar:["درجة الحرارة","تلقائي (حسب موقعك)"],ru:["Температура","Авто (по местоположению)"]};
 for(const l in TEMPT){I18N[l].tempSet=TEMPT[l][0];I18N[l].tAuto=TEMPT[l][1]}
+I18N.en.askResendT="Almost ready!";I18N.en.askResendB="Ask Mom to send the routine link again, then open it and add it to your Home Screen.";
