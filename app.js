@@ -1,5 +1,5 @@
 // DigiMaa – onboarding wizard, multi-routine home, per-routine launch, runner, editor. © Net Zero Strategic, LLC
-const APP_VER='1.2.6';
+const APP_VER='1.2.7';
 const $=id=>document.getElementById(id),clone=o=>JSON.parse(JSON.stringify(o)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const nav2=(navigator.language||'en').slice(0,2);
@@ -403,7 +403,7 @@ async function start(id){const r=allR()[id];if(!r)return home();R=r;RS=SL(r.lang
  // Drop empty/day-filtered steps so index 0 is always a real cue
  steps=(r.steps||[]).filter(x=>!(x&&x.days&&x.days.length&&!x.days.includes(d))&&!(x&&x.weather&&!setting('weather',true)))
   .map(x=>typeof x==='string'?{text:x}:x).filter(x=>x&&(x.weather||String(x.text||'').trim()));
- steps=prepShower(steps);shPos=null;
+ steps=prepShower(steps);shPos=null;adaptRK='u:'+String(r.kid||activeKid()||'')+'|r:'+String(r.id);if(typeof Adapt!=='undefined'){Adapt.abandon();Adapt.resume()}
  if(!steps.length){$('step').textContent='…';active=false;return home()}
  i=0;active=true;paused=false;run++;keepAwake();greetingPhase=true;const nm=kidName(r.kid||activeKid());
  const greet=routineGreeting(r,nm)||(RS.greetHi||I18N.en.greetHi||'Hi!').replace(/\{n\}/g,nm?', '+nm:'');
@@ -456,14 +456,24 @@ function runShower(me,r,intro){const x=steps[me],P=x._phases,tok=++shTok,live=()
  phase(true)}
 function shExitLoop(me,r){const x=steps[me],tok=++shTok,live=()=>i===me&&r===run&&tok===shTok,again=()=>later(SH_OUT_GAP*1000,async()=>{if(!live())return;await say(T(x)+' '+(voice?RS.sayDone:RS.pressDone));if(live())again()});again()}
 function userDone(){if(active&&!paused&&!greetingPhase&&steps[i]&&steps[i]._sh)return; // no Done inside the shower
+ if(typeof Adapt!=='undefined'){if(active&&!paused&&!greetingPhase&&adaptable(steps[i]))Adapt.done();else if(!paused)Adapt.abandon()}
  next()}
+// ---------- Adaptive reminder timing (adapt.js, v1.2.7) ----------
+// Learns per child + routine id + step from the time between a step appearing and the existing Done (touch or voice),
+// and gently stretches/compresses that step's "Still on…" reminder interval (0.4×–2.5× of the parent's setting).
+// No new buttons, words unchanged, never skips or completes a step. Shower steps and the shower exit are excluded.
+let adaptRK='';
+function adaptable(x){return !!(x&&!x._sh&&!x._shExit)}
+function adaptKey(){return Adapt.stepKey(steps,i,y=>y&&y.weather?'__weather__':String((y&&y.text)||''))}
+function adaptStart(x){if(typeof Adapt==='undefined')return;if(adaptable(x))Adapt.start(adaptRK,adaptKey(),(+setting('checkin',120))*1000);else Adapt.abandon()}
+function checkMs(){const base=(+setting('checkin',120))*1000;if(!base||typeof Adapt==='undefined'||!adaptable(steps[i]))return base;return Adapt.interval(adaptRK,adaptKey(),base)}
 async function step(intro){clr();greetingPhase=false;if(i<steps.length&&steps[i].weather&&warm())steps.splice(i,1);if(i>=steps.length)return finish();
- const x=steps[i],me=i,r=run,txt=T(x)||'…',ad=typeof x==='object'&&x.auto===true;$('step').textContent=txt;bar();doneUI(x);
+ const x=steps[i],me=i,r=run,txt=T(x)||'…',ad=typeof x==='object'&&x.auto===true;$('step').textContent=txt;bar();doneUI(x);adaptStart(x);
  if(x._sh)return runShower(me,r,intro);
  await say((intro?intro+' ':'')+txt+(ad?'':' '+(voice?RS.sayDone:RS.pressDone)));if(i!==me||r!==run)return;
  if(x._shExit)return shExitLoop(me,r);
  if(typeof x==='object'&&x.wait>0&&x.auto)later(x.wait*1000,()=>{if(i===me)next()});arm()}
-function arm(){clearTimeout(check);const ms=(+setting('checkin',120))*1000;if(!ms)return;check=setTimeout(()=>{if(active&&!paused&&i<steps.length){say(RS.still.replace('{s}',T(steps[i]))+' '+(voice?RS.sayDone:RS.pressDone));arm()}},ms)}
+function arm(){clearTimeout(check);const ms=checkMs();if(!ms)return;check=setTimeout(()=>{if(active&&!paused&&i<steps.length){say(RS.still.replace('{s}',T(steps[i]))+' '+(voice?RS.sayDone:RS.pressDone));arm()}},ms)}
 function next(){if(!active||paused)return;clr();
  // During greeting, Done means "start step 1" — do not increment past it (was skipping first step)
  if(greetingPhase){greetingPhase=false;i=0;return step(RS.first)}
@@ -471,15 +481,16 @@ function next(){if(!active||paused)return;clr();
  const pm=setting('praise','every'),give=pm==='every'||(pm==='some'&&i%3===0);const p=give?pick(R.calm?RS.calm:RS.praise):'';
  step((p+(i===steps.length-1&&pm!=='end'?' '+RS.last:'')+pace()).trim())}
 async function finish(){clr();$('bar').style.width='100%';$('step').textContent=R.calm?'🌙':'🎉';active=false;await Speech.pauseListening();await Speech.speak(R.calm?RS.night:RS.finish);releaseWake()}
-async function stop(){active=false;run++;clr();await Speech.pauseListening();Speech.stopSpeaking();await Speech.speak(RS.stopped);releaseWake();scrubSendButtons();home()}
+async function stop(){if(typeof Adapt!=='undefined')Adapt.abandon();active=false;run++;clr();await Speech.pauseListening();Speech.stopSpeaking();await Speech.speak(RS.stopped);releaseWake();scrubSendButtons();home()}
 function heard(x){x=(x||'').toLowerCase().trim();if(!active||paused)return;if(steps[i]&&steps[i]._sh)return;$('status').textContent='🎤 '+x;if(RS.dw.some(w=>x.includes(w)))userDone()}
 $('doneBtn').onclick=()=>userDone();
 document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{const c=b.dataset.c;
  if(c==='stop')return stop();if(!active)return;if(c==='repeat')return step('');if(c==='back'){greetingPhase=false;i=Math.max(0,i-1);shPos=null;return step('')}
- if(c==='pause'){paused=!paused;$('pauseBtn').textContent=paused?RS.resume:RS.pause;if(paused){clr();Speech.stopSpeaking();Speech.pauseListening()}else{run++;step('')}}});
+ if(c==='pause'){paused=!paused;$('pauseBtn').textContent=paused?RS.resume:RS.pause;if(paused){clr();Speech.stopSpeaking();Speech.pauseListening();if(typeof Adapt!=='undefined')Adapt.pause()}else{if(typeof Adapt!=='undefined')Adapt.resume();run++;step('')}}});
 let wake;async function keepAwake(){try{if(NP('KeepAwake'))return NP('KeepAwake').keepAwake();if('wakeLock'in navigator)wake=await navigator.wakeLock.request('screen')}catch(e){}}
 function releaseWake(){try{if(NP('KeepAwake'))return NP('KeepAwake').allowSleep();wake&&wake.release()}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&active)keepAwake()});
+document.addEventListener('visibilitychange',()=>{if(typeof Adapt!=='undefined')Adapt.hidden(document.visibilityState==='hidden')}); // time outside the app is not learned
 // ---------- step editor (used by review page and ✏️) ----------
 function renderSteps(box,r){const dn=dayNames();box.innerHTML='<ol class="tl" style="padding:0"></ol><div class="row"><button class="as">'+esc(t('add'))+'</button><button class="aw">'+esc(t('weatherStep'))+'</button></div><p class="muted small">⏱ '+esc(t('timerEdit')||t('timer'))+'</p>';
  const ol=box.querySelector('ol');r.steps=r.steps.map(x=>typeof x==='string'?{text:x}:x);

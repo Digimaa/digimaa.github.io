@@ -1,7 +1,7 @@
 // DigiMaa SW v13: network-first shell; never cache version.json; skipWaiting+claim.
-const C='digimaa-v16';
-const VER='1.2.6';
-const SHELL=['./','index.html','style.css','i18n.js','i18n-ob.js','i18n-sub.js','i18n-ux.js','i18n-ux2.js','i18n-hs.js','speech.js','subscription.js','app.js','icon-192.png','icon-512.png','version.json'];
+const C='digimaa-v17';
+const VER='1.2.7';
+const SHELL=['./','index.html','style.css','i18n.js','i18n-ob.js','i18n-sub.js','i18n-ux.js','i18n-ux2.js','i18n-hs.js','speech.js','subscription.js','adapt.js','app.js','icon-192.png','icon-512.png','version.json'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(SHELL)).catch(()=>{}))});
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))).then(()=>self.clients.claim())));
 self.addEventListener('message',e=>{if(e.data&&e.data.type==='SKIP_WAITING')self.skipWaiting()});
@@ -15,7 +15,7 @@ self.addEventListener('fetch',ev=>{const u=new URL(ev.request.url);if(ev.request
   ev.respondWith(new Response(JSON.stringify({id:'digimaa-'+r,name:n,short_name:n.length>12?n.slice(0,12):n,start_url:start,scope:base,display:'standalone',background_color:'#f5f5ff',theme_color:c,description:'DigiMaa © Net Zero Strategic, LLC',
    icons:[{src:base+'routine-icon-192.png?'+q,sizes:'192x192',type:'image/png'},{src:base+'routine-icon-512.png?'+q,sizes:'512x512',type:'image/png',purpose:'any maskable'}]}),{headers:{'Content-Type':'application/manifest+json'}}));return}
  const m=/routine-icon-(\d+)\.png$/.exec(u.pathname);if(m){ev.respondWith(icon(u.searchParams.get('e')||'⭐',u.searchParams.get('c')||'#4f46e5',+m[1]));return}
- const isShell=ev.request.mode==='navigate'||/\.(html|js|css)$/.test(u.pathname)||/\/(i18n[^/]*|app|speech|subscription)(\.js)?$/.test(u.pathname);
+ const isShell=ev.request.mode==='navigate'||/\.(html|js|css)$/.test(u.pathname)||/\/(i18n[^/]*|app|adapt|speech|subscription)(\.js)?$/.test(u.pathname);
  if(isShell){ev.respondWith(fetch(ev.request).then(async r=>{
   try{const c=await caches.open(C);if(ev.request.mode==='navigate')await c.put('index.html',r.clone());
    else{await c.put(ev.request,r.clone());const bare=u.pathname.split('/').pop();if(bare)await c.put(bare,r.clone())}}catch(e){}
