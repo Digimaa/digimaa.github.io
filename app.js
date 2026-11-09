@@ -1,5 +1,5 @@
 // DigiMaa – onboarding wizard, multi-routine home, per-routine launch, runner, editor. © Net Zero Strategic, LLC
-const APP_VER='1.2.5';
+const APP_VER='1.2.6';
 const $=id=>document.getElementById(id),clone=o=>JSON.parse(JSON.stringify(o)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const nav2=(navigator.language||'en').slice(0,2);
@@ -403,6 +403,7 @@ async function start(id){const r=allR()[id];if(!r)return home();R=r;RS=SL(r.lang
  // Drop empty/day-filtered steps so index 0 is always a real cue
  steps=(r.steps||[]).filter(x=>!(x&&x.days&&x.days.length&&!x.days.includes(d))&&!(x&&x.weather&&!setting('weather',true)))
   .map(x=>typeof x==='string'?{text:x}:x).filter(x=>x&&(x.weather||String(x.text||'').trim()));
+ steps=prepShower(steps);shPos=null;
  if(!steps.length){$('step').textContent='…';active=false;return home()}
  i=0;active=true;paused=false;run++;keepAwake();greetingPhase=true;const nm=kidName(r.kid||activeKid());
  const greet=routineGreeting(r,nm)||(RS.greetHi||I18N.en.greetHi||'Hi!').replace(/\{n\}/g,nm?', '+nm:'');
@@ -416,9 +417,51 @@ function pace(){if(!R.doneBy)return '';const [h,m]=R.doneBy.split(':').map(Numbe
  if(left<-60||left>240)return '';if(left<=0||left<rem*1.5){if(i-(R._lastBehind??-9)>=2){R._lastBehind=i;return ' '+RS.behind}return ''}
  if(i%3===0)return ' '+RS.minsLeft.replace('{m}',left);return ''}
 function bar(){$('bar').style.width=(i/steps.length*100)+'%'}
+// ---------- Shower safety (all users, all routines) ----------
+// The phone stays OUTSIDE the shower. Steps inside the shower are timed, repeated, loud spoken reminders:
+// no "Press done" / "Say done" while in the shower, Done/voice "done" is ignored there, and the step never jumps
+// to drying early. A single all-in-one shower step is expanded into timed soap → rinse → face → water-off reminders
+// (at least SH_MIN seconds). Done comes back only on the "step out of the shower" step, once the user is out.
+const SHOWER_RE=/shower|ducha|douche|dusch|chuveiro|doccia|शावर|नहा|स्नान|ஷவர|குளி|షవర్|స్నాన|ಶವರ್|ಸ್ನಾನ|ഷവ|കുളി|淋浴|洗澡|シャワー|샤워|الدش|استحم|душ/i;
+const SH_CONT_RE=/\b(soap|rinse|shampoo|conditioner|scrub|wash (your |my )?(hair|body|face)|turn (off )?the water|turn off the (water|shower))\b/i;
+const SH_OUT_RE=/\b(get|step|come|climb) out\b/i;
+const SH_MIN=450,SH_GAP=30,SH_OUT_GAP=60;
+const SH_EN={shSoap:"Put soap all over your body.",shRinse:"Rinse off all the soap.",shFace:"Wash your face.",shOff:"Turn the water all the way off.",shOut:"Step out of the shower carefully.",shNote:"🚿 Leave the phone outside the shower. Shower steps are timed; Done comes back when you are out."};
+const shT=k=>(RS&&RS[k])||SH_EN[k];
+function prepShower(list){const out=[];let inBlock=false;
+ for(let k=0;k<list.length;k++){const x=list[k],tx=String((x&&x.text)||'');
+  const isSh=!!(x&&!x.weather&&(x.shower===true||(SHOWER_RE.test(tx)&&!SH_OUT_RE.test(tx))||(inBlock&&SH_CONT_RE.test(tx))));
+  if(isSh){out.push(Object.assign({},x,{_sh:true}));inBlock=true;continue}
+  if(inBlock){inBlock=false;
+   // Close the block with the Done step "out of the shower" (reuse the user's own "get out" step if it is next)
+   if(x&&!x.weather&&SH_OUT_RE.test(tx)){out.push(Object.assign({},x,{_shExit:true,auto:false,wait:0}));continue}
+   out.push({text:shT('shOut'),_shExit:true})}
+  out.push(x)}
+ if(inBlock)out.push({text:shT('shOut'),_shExit:true});
+ // Expand a lone all-in-one shower step into timed phases
+ for(let k=0;k<out.length;k++){const x=out[k];if(!x._sh)continue;const alone=!(out[k-1]&&out[k-1]._sh)&&!(out[k+1]&&out[k+1]._sh);
+  if(alone){const tot=Math.max(+x.wait||0,SH_MIN),w=[45,180,120,60,45],sum=w.reduce((a,b)=>a+b,0);
+   x._phases=[[T(x),w[0]],[shT('shSoap'),w[1]],[shT('shRinse'),w[2]],[shT('shFace'),w[3]],[shT('shOff'),w[4]]].map(([t,d])=>[t,Math.round(d*tot/sum)])}
+  else x._phases=[[T(x),Math.max(+x.wait||0,90)]]}
+ return out}
+let shPos=null,shTok=0; // {i,ph} so Pause/Repeat resume the same shower phase instead of skipping ahead
+function doneUI(x){const b=$('doneBtn');if(!b)return;const off=!!(x&&x._sh);b.disabled=off;b.style.opacity=off?'.35':'';
+ if(off)$('status').textContent=shT('shNote');else if($('status').textContent===shT('shNote'))$('status').textContent=''}
+function runShower(me,r,intro){const x=steps[me],P=x._phases,tok=++shTok,live=()=>i===me&&r===run&&tok===shTok;if(!shPos||shPos.i!==me)shPos={i:me,ph:0};
+ const phase=async(first)=>{if(!live())return;const ph=shPos.ph;if(ph>=P.length){shPos=null;return next()}
+  const [txt,dur]=P[ph];let left=dur;
+  await say((first&&intro?intro+' ':'')+txt);if(!live())return; // never append Press done / Say done here
+  const tick=()=>{if(!live())return;const g=Math.min(SH_GAP,left);left-=g;
+   later(g*1000,async()=>{if(!live())return;if(left<=0){shPos.ph++;return phase(false)}await say(txt);if(live())tick()})};tick()};
+ phase(true)}
+function shExitLoop(me,r){const x=steps[me],tok=++shTok,live=()=>i===me&&r===run&&tok===shTok,again=()=>later(SH_OUT_GAP*1000,async()=>{if(!live())return;await say(T(x)+' '+(voice?RS.sayDone:RS.pressDone));if(live())again()});again()}
+function userDone(){if(active&&!paused&&!greetingPhase&&steps[i]&&steps[i]._sh)return; // no Done inside the shower
+ next()}
 async function step(intro){clr();greetingPhase=false;if(i<steps.length&&steps[i].weather&&warm())steps.splice(i,1);if(i>=steps.length)return finish();
- const x=steps[i],me=i,r=run,txt=T(x)||'…',ad=typeof x==='object'&&x.auto===true;$('step').textContent=txt;bar();
+ const x=steps[i],me=i,r=run,txt=T(x)||'…',ad=typeof x==='object'&&x.auto===true;$('step').textContent=txt;bar();doneUI(x);
+ if(x._sh)return runShower(me,r,intro);
  await say((intro?intro+' ':'')+txt+(ad?'':' '+(voice?RS.sayDone:RS.pressDone)));if(i!==me||r!==run)return;
+ if(x._shExit)return shExitLoop(me,r);
  if(typeof x==='object'&&x.wait>0&&x.auto)later(x.wait*1000,()=>{if(i===me)next()});arm()}
 function arm(){clearTimeout(check);const ms=(+setting('checkin',120))*1000;if(!ms)return;check=setTimeout(()=>{if(active&&!paused&&i<steps.length){say(RS.still.replace('{s}',T(steps[i]))+' '+(voice?RS.sayDone:RS.pressDone));arm()}},ms)}
 function next(){if(!active||paused)return;clr();
@@ -429,10 +472,10 @@ function next(){if(!active||paused)return;clr();
  step((p+(i===steps.length-1&&pm!=='end'?' '+RS.last:'')+pace()).trim())}
 async function finish(){clr();$('bar').style.width='100%';$('step').textContent=R.calm?'🌙':'🎉';active=false;await Speech.pauseListening();await Speech.speak(R.calm?RS.night:RS.finish);releaseWake()}
 async function stop(){active=false;run++;clr();await Speech.pauseListening();Speech.stopSpeaking();await Speech.speak(RS.stopped);releaseWake();scrubSendButtons();home()}
-function heard(x){x=(x||'').toLowerCase().trim();$('status').textContent='🎤 '+x;if(!active||paused)return;if(RS.dw.some(w=>x.includes(w)))next()}
-$('doneBtn').onclick=()=>next();
+function heard(x){x=(x||'').toLowerCase().trim();if(!active||paused)return;if(steps[i]&&steps[i]._sh)return;$('status').textContent='🎤 '+x;if(RS.dw.some(w=>x.includes(w)))userDone()}
+$('doneBtn').onclick=()=>userDone();
 document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{const c=b.dataset.c;
- if(c==='stop')return stop();if(!active)return;if(c==='repeat')return step('');if(c==='back'){greetingPhase=false;i=Math.max(0,i-1);return step('')}
+ if(c==='stop')return stop();if(!active)return;if(c==='repeat')return step('');if(c==='back'){greetingPhase=false;i=Math.max(0,i-1);shPos=null;return step('')}
  if(c==='pause'){paused=!paused;$('pauseBtn').textContent=paused?RS.resume:RS.pause;if(paused){clr();Speech.stopSpeaking();Speech.pauseListening()}else{run++;step('')}}});
 let wake;async function keepAwake(){try{if(NP('KeepAwake'))return NP('KeepAwake').keepAwake();if('wakeLock'in navigator)wake=await navigator.wakeLock.request('screen')}catch(e){}}
 function releaseWake(){try{if(NP('KeepAwake'))return NP('KeepAwake').allowSleep();wake&&wake.release()}catch(e){}}
