@@ -1,5 +1,5 @@
 // DigiMaa – onboarding wizard, multi-routine home, per-routine launch, runner, editor. © Net Zero Strategic, LLC
-const APP_VER='1.2.7';
+const APP_VER='1.2.8';
 const $=id=>document.getElementById(id),clone=o=>JSON.parse(JSON.stringify(o)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const nav2=(navigator.language||'en').slice(0,2);
@@ -383,6 +383,8 @@ const warm=()=>TEMP_C!=null&&TEMP_C>=18.3; // skip jacket at 18.3 °C (= 65 °F)
 const T=x=>typeof x==='string'?x:x.weather?weatherText():x.text;
 const later=(ms,f)=>{const r=run;tm.push(setTimeout(()=>{if(active&&!paused&&r===run)f()},ms))};
 const clr=()=>{tm.forEach(clearTimeout);tm=[];clearTimeout(check)};
+// Shower reminders never turn the microphone back on (iOS lowers the speaker volume while it listens; Done is ignored in the shower anyway)
+async function shSay(x){if(voice)await Speech.pauseListening();await Speech.speak(x)}
 async function say(x){if(voice)await Speech.pauseListening();await Speech.speak(x);if(voice&&active)Speech.listen()}
 const pick=a=>a[Math.floor(Math.random()*a.length)];
 
@@ -450,9 +452,9 @@ function doneUI(x){const b=$('doneBtn');if(!b)return;const off=!!(x&&x._sh);b.di
 function runShower(me,r,intro){const x=steps[me],P=x._phases,tok=++shTok,live=()=>i===me&&r===run&&tok===shTok;if(!shPos||shPos.i!==me)shPos={i:me,ph:0};
  const phase=async(first)=>{if(!live())return;const ph=shPos.ph;if(ph>=P.length){shPos=null;return next()}
   const [txt,dur]=P[ph];let left=dur;
-  await say((first&&intro?intro+' ':'')+txt);if(!live())return; // never append Press done / Say done here
+  await shSay((first&&intro?intro+' ':'')+txt);if(!live())return; // never append Press done / Say done here
   const tick=()=>{if(!live())return;const g=Math.min(SH_GAP,left);left-=g;
-   later(g*1000,async()=>{if(!live())return;if(left<=0){shPos.ph++;return phase(false)}await say(txt);if(live())tick()})};tick()};
+   later(g*1000,async()=>{if(!live())return;if(left<=0){shPos.ph++;return phase(false)}await shSay(txt);if(live())tick()})};tick()};
  phase(true)}
 function shExitLoop(me,r){const x=steps[me],tok=++shTok,live=()=>i===me&&r===run&&tok===shTok,again=()=>later(SH_OUT_GAP*1000,async()=>{if(!live())return;await say(T(x)+' '+(voice?RS.sayDone:RS.pressDone));if(live())again()});again()}
 function userDone(){if(active&&!paused&&!greetingPhase&&steps[i]&&steps[i]._sh)return; // no Done inside the shower
