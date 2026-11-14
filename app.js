@@ -1,5 +1,5 @@
 // DigiMaa – onboarding wizard, multi-routine home, per-routine launch, runner, editor. © Net Zero Strategic, LLC
-const APP_VER='1.2.9';
+const APP_VER='1.2.10';
 const $=id=>document.getElementById(id),clone=o=>JSON.parse(JSON.stringify(o)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const nav2=(navigator.language||'en').slice(0,2);
@@ -383,8 +383,9 @@ const warm=()=>TEMP_C!=null&&TEMP_C>=18.3; // skip jacket at 18.3 °C (= 65 °F)
 const T=x=>typeof x==='string'?x:x.weather?weatherText():x.text;
 const later=(ms,f)=>{const r=run;tm.push(setTimeout(()=>{if(active&&!paused&&r===run)f()},ms))};
 const clr=()=>{tm.forEach(clearTimeout);tm=[];clearTimeout(check)};
-// Shower reminders never turn the microphone back on (iOS lowers the speaker volume while it listens; Done is ignored in the shower anyway)
-async function shSay(x){if(voice)await Speech.pauseListening();await Speech.speak(x)}
+// Shower reminders keep the microphone listening like every other step so iPhone stays at the same (louder) volume level;
+// anything heard in the shower is ignored by heard()/userDone(), so Done still can't be triggered there (v1.2.10)
+async function shSay(x){if(voice)await Speech.pauseListening();await Speech.speak(x);if(voice&&active)Speech.listen()}
 async function say(x){if(voice)await Speech.pauseListening();await Speech.speak(x);if(voice&&active)Speech.listen()}
 const pick=a=>a[Math.floor(Math.random()*a.length)];
 
