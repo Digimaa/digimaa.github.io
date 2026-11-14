@@ -2,13 +2,15 @@
 const Cap=window.Capacitor,NATIVE=!!(Cap&&Cap.isNativePlatform&&Cap.isNativePlatform());
 const NP=n=>NATIVE&&Cap.Plugins&&Cap.Plugins[n];
 const Speech={lang:'en-US',onHeard:null,_rec:null,_on:false,_say:0,
- async speak(text){const id=++this._say;
+ // o (optional, v1.2.11 time-up reminders): {voice, pitch, rate}. Without o everything is exactly as before.
+ async speak(text,o){const id=++this._say;o=o||{};
   const cap=ms=>new Promise(res=>{const t=setTimeout(res,ms);return t});
   if(NP('TextToSpeech')){try{await NP('TextToSpeech').stop()}catch(e){}
-   try{await Promise.race([NP('TextToSpeech').speak({text,lang:this.lang,rate:.9}),cap(8000)])}catch(e){}return}
+   const a={text,lang:this.lang,rate:o.rate||.9};if(o.pitch)a.pitch=Math.max(.5,Math.min(2,o.pitch));
+   try{await Promise.race([NP('TextToSpeech').speak(a),cap(8000)])}catch(e){}return}
   if(!window.speechSynthesis)return;
-  return new Promise(res=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=this.lang;u.rate=.9;
-   const v=speechSynthesis.getVoices().find(v=>v.lang&&v.lang.replace('_','-').toLowerCase().startsWith(this.lang.slice(0,2).toLowerCase()));if(v)u.voice=v;
+  return new Promise(res=>{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=this.lang;u.rate=o.rate||.9;if(o.pitch)u.pitch=Math.max(.1,Math.min(2,o.pitch));
+   const v=o.voice||speechSynthesis.getVoices().find(v=>v.lang&&v.lang.replace('_','-').toLowerCase().startsWith(this.lang.slice(0,2).toLowerCase()));if(v)u.voice=v;
    window._u=u;let f=false;const fin=()=>{if(!f&&id===this._say){f=true;res()}};u.onend=fin;u.onerror=fin;
    // Cap wait so greeting never blocks scheduling step 1 (iOS can delay/miss onend)
    setTimeout(fin,Math.min(8000,2500+Math.min(text.length,80)*60));

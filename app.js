@@ -1,5 +1,5 @@
 // DigiMaa – onboarding wizard, multi-routine home, per-routine launch, runner, editor. © Net Zero Strategic, LLC
-const APP_VER='1.2.10';
+const APP_VER='1.2.11';
 const $=id=>document.getElementById(id),clone=o=>JSON.parse(JSON.stringify(o)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const nav2=(navigator.language||'en').slice(0,2);
@@ -83,7 +83,7 @@ $('toAbout').onclick=e=>{e.preventDefault();show('about')};
 // ---------- home ----------
 function home(){if(isChildMode())return childHome();markParentDevice();syncHomeUrl();applyLang();
  $('lang').innerHTML=Object.entries(I18N).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');$('lang').value=L;
- $('mode').value=setting('mode','touch');$('kid').value=kidName(activeKid());$('praiseSel').value=setting('praise','every');$('checkSel').value=String(setting('checkin',120));$('tempSel').value=setting('tempUnit','auto');renderKids();$('useWeather').checked=setting('weather',true);
+ $('mode').value=setting('mode','touch');$('kid').value=kidName(activeKid());$('praiseSel').value=setting('praise','every');$('checkSel').value=String(setting('checkin',120));$('nagSel').value=setting('nagStyle','escalate');$('tempSel').value=setting('tempUnit','auto');renderKids();$('useWeather').checked=setting('weather',true);
  const R=allR();$('rlist').innerHTML='';
  Object.values(R).filter(r=>!r.kid||r.kid===activeKid()).forEach(r=>{const d=document.createElement('div');d.className='rrow';
   d.innerHTML=`<button class="rbtn" style="background:${r.color}">${r.emoji} ${esc(r.name)}</button><button class="s" title="edit">✏️</button><button class="s" title="home screen">📲</button>`;
@@ -96,7 +96,7 @@ function home(){if(isChildMode())return childHome();markParentDevice();syncHomeU
  else{const box=$('shareBox');if(box)box.remove()}}
 
 $('lang').onchange=()=>{L=$('lang').value;LS.set('lang',L);home()};
-$('mode').onchange=()=>{LS.set('mode',$('mode').value);queueSyncUrl()};$('kid').onchange=()=>{setKidName($('kid').value.trim());renderKids();queueSyncUrl()};$('tempSel').onchange=()=>{LS.set('tempUnit',$('tempSel').value);queueSyncUrl()};$('praiseSel').onchange=()=>{LS.set('praise',$('praiseSel').value);queueSyncUrl()};$('checkSel').onchange=()=>{LS.set('checkin',+$('checkSel').value);queueSyncUrl()};$('useWeather').onchange=()=>{LS.set('weather',$('useWeather').checked);queueSyncUrl()};
+$('mode').onchange=()=>{LS.set('mode',$('mode').value);queueSyncUrl()};$('kid').onchange=()=>{setKidName($('kid').value.trim());renderKids();queueSyncUrl()};$('tempSel').onchange=()=>{LS.set('tempUnit',$('tempSel').value);queueSyncUrl()};$('praiseSel').onchange=()=>{LS.set('praise',$('praiseSel').value);queueSyncUrl()};$('checkSel').onchange=()=>{LS.set('checkin',+$('checkSel').value);queueSyncUrl()};$('nagSel').onchange=()=>{LS.set('nagStyle',$('nagSel').value);queueSyncUrl()};$('useWeather').onchange=()=>{LS.set('weather',$('useWeather').checked);queueSyncUrl()};
 $('newR').onclick=()=>{markParentDevice();canCreate()?startWizard(true):show('paywall')};
 function renderKids(){const k=kids(),a=activeKid(),bar=$('kidBar');
  bar.innerHTML=(k.length>1||k[0].name?k.map(x=>`<button class="chip${x.id===a?' on':''}" data-kid="${x.id}">🧒 ${esc(x.name||'…')}</button>`).join(''):'')+`<button class="chip" id="addKid">＋ ${esc(t('addKid'))}</button>`;
@@ -134,7 +134,7 @@ function quickStart(){const r=makeRoutine('morning',template('morning'));const R
 function micBtn(input){if(!(NATIVE||window.SpeechRecognition||window.webkitSpeechRecognition))return '';return `<button class="mic" data-for="${input}">🎤</button>`}
 function wireMics(){document.querySelectorAll('#obBody .mic').forEach(b=>b.onclick=async()=>{b.disabled=true;const v=await Speech.dictate(S().tts);b.disabled=false;if(v){const i=$(b.dataset.for);i.value=v;i.dispatchEvent(new Event('input'));if(b.dataset.for==='ownIn')$('ownAdd').click()}})}
 const dayNames=()=>[...Array(7)].map((_,d)=>new Intl.DateTimeFormat(L,{weekday:'short'}).format(new Date(2024,0,7+d)));
-const tag=x=>[x.wait?Math.round(x.wait/60)+' '+t('minutes'):'',x.days?x.days.map(d=>dayNames()[d]).join(' '):''].filter(Boolean).join(' · ');
+const tag=x=>[x.wait?Math.round(x.wait/60)+' '+t('minutes')+(x.nag?' 🔔':''):'',x.days?x.days.map(d=>dayNames()[d]).join(' '):''].filter(Boolean).join(' · ');
 function renderOb(){const B=$('obBody'),p=wiz.page,s=S();applyLang();
  const idx=wiz.pages?wiz.pages.indexOf(p):0,n=wiz.pages?wiz.pages.length:1;$('obProg').textContent=wiz.single?'':t('progress',{a:idx+1,b:n});$('obDots').innerHTML=`<i style="width:${(idx+1)/n*100}%"></i>`;
  $('obBack').style.visibility=(wiz.single||idx<=0||p==='hs')?'hidden':'visible';
@@ -170,8 +170,9 @@ function renderOb(){const B=$('obBody'),p=wiz.page,s=S();applyLang();
   if(k==='device'){wiz.device=v;LS.set('device',v)}else if(k==='lang'){L=v;LS.set('lang',v);wiz.type=null}else if(k==='mode')LS.set('mode',v);renderOb()})}
 function openSheet(x){const dn=dayNames(),el=$('sheetIn');const draw=()=>{const mins=x.wait?x.wait/60:0;
  el.innerHTML=`<div class="q">${x.emoji} ${esc(x.weather?t('weatherStep'):x.text)}</div><b>⏱ ${esc(t('giveTime'))}</b><div class="chips">`+[0,1,2,5,10].map(m=>`<button class="chip${mins===m?' on':''}" data-m="${m}">${m?m+' '+esc(t('minutes')):esc(t('noTimer'))}</button>`).join('')+
-  `</div><b>📅 ${esc(t('someDays'))}</b><div class="chips">`+dn.map((d,j)=>`<button class="chip${!x.days||x.days.includes(j)?' on':''}" data-dd="${j}">${d}</button>`).join('')+`</div><button class="big" id="sheetOk">${esc(t('okB'))}</button>`;
- el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const m=+b.dataset.m;if(m){x.wait=m*60;x.auto=true}else{delete x.wait;delete x.auto}draw()});
+  `</div>`+(mins?`<b>🔔 ${esc(t('nagWhen'))}</b><div class="chips"><button class="chip${x.nag?'':' on'}" data-ng="0">➡️ ${esc(t('nagMove'))}</button><button class="chip${x.nag?' on':''}" data-ng="1">🔔 ${esc(t('nagStep'))}</button></div>`:'')+`<b>📅 ${esc(t('someDays'))}</b><div class="chips">`+dn.map((d,j)=>`<button class="chip${!x.days||x.days.includes(j)?' on':''}" data-dd="${j}">${d}</button>`).join('')+`</div><button class="big" id="sheetOk">${esc(t('okB'))}</button>`;
+ el.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{const m=+b.dataset.m;if(m){x.wait=m*60;if(!x.nag)x.auto=true}else{delete x.wait;delete x.auto;delete x.nag}draw()});
+ el.querySelectorAll('[data-ng]').forEach(b=>b.onclick=()=>{if(b.dataset.ng==='1'){x.nag=true;delete x.auto}else{delete x.nag;x.auto=true}draw()});
  el.querySelectorAll('[data-dd]').forEach(b=>b.onclick=()=>{const j=+b.dataset.dd;let d=x.days||[0,1,2,3,4,5,6];d=d.includes(j)?d.filter(z=>z!==j):[...d,j].sort();if(!d.length)return;x.days=d.length===7?undefined:d;if(!x.days)delete x.days;draw()});
  $('sheetOk').onclick=()=>{$('sheet').hidden=true;renderOb()}};draw();$('sheet').hidden=false}
 $('sheet').onclick=e=>{if(e.target.id==='sheet'){$('sheet').hidden=true;renderOb()}};
@@ -200,18 +201,18 @@ function b64(o){return b64str(typeof o==='string'?o:JSON.stringify(o))}
 function unb64(s){try{s=String(s).replace(/ /g,'+').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';return JSON.parse(decodeURIComponent(escape(atob(s))))}catch(e){return null}}
 function u8ToB64url(u8){let s='';for(let i=0;i<u8.length;i+=0x8000)s+=String.fromCharCode.apply(null,u8.subarray(i,Math.min(i+0x8000,u8.length)));return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
 function b64urlToU8(s){s=String(s).replace(/ /g,'+').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const bin=atob(s),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);return u8}
-function cStep(x){if(typeof x==='string')return x;if(x&&x.weather)return{w:1};const o={t:x.text};if(x.emoji&&x.emoji!=='⭐')o.e=x.emoji;if(x.wait)o.s=x.wait;if(x.auto!=null)o.a=x.auto===true?1:x.auto;if(x.days&&x.days.length)o.d=x.days;return o}
-function xStep(x){if(typeof x==='string')return{text:x};if(x&&x.w)return{weather:true};const o={text:x.t||x.text||''};if(x.e||x.emoji)o.emoji=x.e||x.emoji;if(x.s||x.wait)o.wait=x.s||x.wait;if(x.a!=null||x.auto!=null)o.auto=x.a!=null?(x.a===1?true:x.a):x.auto;if(x.d||x.days)o.days=x.d||x.days;return o}
+function cStep(x){if(typeof x==='string')return x;if(x&&x.weather)return{w:1};const o={t:x.text};if(x.emoji&&x.emoji!=='⭐')o.e=x.emoji;if(x.wait)o.s=x.wait;if(x.auto!=null)o.a=x.auto===true?1:x.auto;if(x.days&&x.days.length)o.d=x.days;if(x.nag)o.g=1;return o}
+function xStep(x){if(typeof x==='string')return{text:x};if(x&&x.w)return{weather:true};const o={text:x.t||x.text||''};if(x.e||x.emoji)o.emoji=x.e||x.emoji;if(x.s||x.wait)o.wait=x.s||x.wait;if(x.a!=null||x.auto!=null)o.auto=x.a!=null?(x.a===1?true:x.a):x.auto;if(x.d||x.days)o.days=x.d||x.days;if(x.g||x.nag)o.nag=true;return o}
 function cRoutine(r){return{i:r.id,n:r.name,e:r.emoji,c:r.color,l:r.lang||L,k:r.kid,m:r.calm?1:0,b:r.doneBy||'',s:(r.steps||[]).map(cStep)}}
 function xRoutine(o){if(!o)return null;if(o.id&&o.steps)return o;return{id:o.i||o.id,name:o.n||o.name,emoji:o.e||o.emoji||'⭐',color:o.c||o.color||'#4f46e5',lang:o.l||o.lang||L,kid:o.k||o.kid,calm:!!(o.m||o.calm),doneBy:o.b||o.doneBy||'',steps:(o.s||o.steps||[]).map(xStep)}}
 function packSetup(r){let kn='';try{kn=kidName(r.kid||activeKid())}catch(e){}
- return{v:1,r:cRoutine(r),k:kn,m:setting('mode','touch'),l:L,u:setting('tempUnit','auto'),p:setting('praise','every'),c:setting('checkin',120),w:setting('weather',true)?1:0,d:setting('device',wiz.device||null),y:setting('country',null)}}
+ return{v:1,r:cRoutine(r),k:kn,m:setting('mode','touch'),l:L,u:setting('tempUnit','auto'),p:setting('praise','every'),c:setting('checkin',120),w:setting('weather',true)?1:0,g:setting('nagStyle','escalate'),d:setting('device',wiz.device||null),y:setting('country',null)}}
 function unpackSetup(data){if(!data)return null;data=Object.assign({},data);if(data.r)data.r=xRoutine(data.r);
  if(data.kidName==null&&data.k!=null)data.kidName=data.k;if(data.mode==null&&data.m!=null)data.mode=data.m;
  if(data.lang==null&&data.l!=null)data.lang=data.l;if(data.tempUnit==null&&data.u!=null)data.tempUnit=data.u;
  if(data.praise==null&&data.p!=null)data.praise=data.p;if(data.checkin==null&&data.c!=null)data.checkin=data.c;
  if(data.weather==null&&data.w!=null)data.weather=!!data.w;if(data.device==null&&data.d!=null)data.device=data.d;
- if(data.country==null&&data.y!=null)data.country=data.y;return data}
+ if(data.country==null&&data.y!=null)data.country=data.y;if(data.nagStyle==null&&data.g!=null)data.nagStyle=data.g;return data}
 function encodePack(o){return b64(o)} // sync: compact JSON + base64url
 async function encodePackZ(o){const json=JSON.stringify(o);try{if(typeof CompressionStream!=='undefined'){
   const ab=await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
@@ -288,7 +289,7 @@ function importSetup(data,id,asChild){if(!data||!data.r)return false;data=unpack
   if(data.lang&&I18N[data.lang]){L=data.lang;LS.set('lang',L)}
   if(data.mode)LS.set('mode',data.mode);if(data.tempUnit)LS.set('tempUnit',data.tempUnit);if(data.praise)LS.set('praise',data.praise);
   if(data.checkin!=null)LS.set('checkin',data.checkin);if(data.weather!=null)LS.set('weather',!!data.weather);
-  if(data.device)LS.set('device',data.device);if(data.country)LS.set('country',data.country);
+  if(data.device)LS.set('device',data.device);if(data.country)LS.set('country',data.country);if(data.nagStyle==='calm'||data.nagStyle==='escalate')LS.set('nagStyle',data.nagStyle);
   const R=allR();const prev=R[rid];R[rid]=data.r;
   if(asChild||(prev&&prev.fromShare)){R[rid].fromShare=true;enableChildMode()}
   if(data.kidName){const k=kids();let c=k.find(x=>x.name===data.kidName);if(!c){if(k.length===1&&!k[0].name){k[0].name=data.kidName;c=k[0]}else{c={id:'k'+Date.now().toString(36),name:data.kidName};k.push(c)}LS.set('kids',k)}
@@ -382,11 +383,11 @@ function weatherText(){if(TEMP_C==null)return RS.wNone;const n=Math.round(useF()
 const warm=()=>TEMP_C!=null&&TEMP_C>=18.3; // skip jacket at 18.3 °C (= 65 °F) or warmer
 const T=x=>typeof x==='string'?x:x.weather?weatherText():x.text;
 const later=(ms,f)=>{const r=run;tm.push(setTimeout(()=>{if(active&&!paused&&r===run)f()},ms))};
-const clr=()=>{tm.forEach(clearTimeout);tm=[];clearTimeout(check)};
+const clr=()=>{tm.forEach(clearTimeout);tm=[];clearTimeout(check);if(typeof Chime!=='undefined')Chime.stop()};
 // Shower reminders keep the microphone listening like every other step so iPhone stays at the same (louder) volume level;
 // anything heard in the shower is ignored by heard()/userDone(), so Done still can't be triggered there (v1.2.10)
 async function shSay(x){if(voice)await Speech.pauseListening();await Speech.speak(x);if(voice&&active)Speech.listen()}
-async function say(x){if(voice)await Speech.pauseListening();await Speech.speak(x);if(voice&&active)Speech.listen()}
+async function say(x,o){if(voice)await Speech.pauseListening();await Speech.speak(x,o);if(voice&&active)Speech.listen()}
 const pick=a=>a[Math.floor(Math.random()*a.length)];
 
 // Local-time greeting: morning <12, afternoon <17, evening otherwise. Falls back to greetHi / en.
@@ -399,7 +400,7 @@ function routineGreeting(r,nm){const RS=SL(r.lang||L),EN=I18N.en,n=nm?', '+nm:''
 
 let greetingPhase=false; // true while speaking greeting before step 0 — Done must NOT skip step 1
 async function start(id){const r=allR()[id];if(!r)return home();R=r;RS=SL(r.lang||L);Speech.lang=RS.tts;voice=setting('mode','touch')==='voice';
- document.documentElement.dir=RS.rtl?'rtl':'ltr';Speech.unlock();getWeather();show('run');$('rname').textContent=r.emoji+' '+r.name;$('status').textContent='';
+ document.documentElement.dir=RS.rtl?'rtl':'ltr';Speech.unlock();if(typeof Chime!=='undefined')Chime.unlock();getWeather();show('run');$('rname').textContent=r.emoji+' '+r.name;$('status').textContent='';
  ['done','back','repeat','pause','stop'].forEach(k=>document.querySelectorAll(`#run [data-t=${k}]`).forEach(e=>e.textContent=RS[k]));
  if(voice){const ok=await Speech.micAvailable();if(!ok){voice=false;$('status').textContent=RS.micNo}}
  const d=new Date().getDay();Speech.onHeard=heard;
@@ -470,13 +471,95 @@ function adaptable(x){return !!(x&&!x._sh&&!x._shExit)}
 function adaptKey(){return Adapt.stepKey(steps,i,y=>y&&y.weather?'__weather__':String((y&&y.text)||''))}
 function adaptStart(x){if(typeof Adapt==='undefined')return;if(adaptable(x))Adapt.start(adaptRK,adaptKey(),(+setting('checkin',120))*1000);else Adapt.abandon()}
 function checkMs(){const base=(+setting('checkin',120))*1000;if(!base||typeof Adapt==='undefined'||!adaptable(steps[i]))return base;return Adapt.interval(adaptRK,adaptKey(),base)}
+// ---------- Attention chime + name, and time-up reminders ("nag mode", v1.2.11) ----------
+// Every spoken reminder starts with a short chime, then the child's name (if set). A step's time limit can either move on by
+// itself (as before) or "Remind until Done": when time is up, reminders repeat until Done (touch or voice) — Done stops them at once.
+// Reminders are deliberately unpredictable so they don't fade into background noise: random sound, volume, 10–20 s gaps,
+// non-repeating wording and voice tone. Setting nagStyle: 'escalate' (default) = parent 1 calm (1–2) → upset (3) → "telling Dad" (4)
+// → parent 2 (deeper / male voice where the phone has one) calm-stern (5–6) → firmer (7–8) → strongest (9+). 'calm' = gentle only.
+// Shower steps never use any of this (timed shower reminders stay exactly as they are).
+const Chime={a:null,urls:{},last:'',
+ // Tiny generated WAVs (no downloads). Volume is baked into the samples because iPhone ignores <audio>.volume.
+ SOUNDS:{
+  soft:[1.1,t=>Chime.notes(t,[880,1175])],
+  strong:[1.4,t=>Chime.notes(t,[784,988,1319])],
+  bell:[1.6,t=>[1,2.76,5.4].reduce((x,m,j)=>x+Math.sin(2*Math.PI*660*m*t)*Math.exp(-t*(2+j*2))/(j+1),0)],
+  whistle:[0.9,t=>Math.sin(2*Math.PI*(1200*t+900*t*t*2))*Math.min(1,t*20)*Math.max(0,1-t/0.9)],
+  drum:[0.8,t=>[0,0.2].reduce((x,s0)=>x+(t>=s0?Math.sin(2*Math.PI*(110-40*(t-s0))*(t-s0))*Math.exp(-(t-s0)*9):0),0)*1.6],
+  ding:[1.0,t=>[0,0.18,0.36].reduce((x,s0)=>x+(t>=s0?Math.sin(2*Math.PI*1568*(t-s0))*Math.exp(-(t-s0)*7):0),0)],
+  boing:[0.9,t=>Math.sin(2*Math.PI*(300+120*Math.sin(t*28))*t)*Math.exp(-t*3)]},
+ notes(t,f){return f.reduce((x,hz,j)=>{const s0=j*0.28;if(t<s0)return x;const d=t-s0;return x+Math.sin(2*Math.PI*hz*d)*Math.exp(-d*4)*(d<0.01?d/0.01:1)},0)},
+ wav(kind,vol){const [len,fn]=this.SOUNDS[kind],sr=22050,n=Math.floor(sr*len),b=new ArrayBuffer(44+n*2),v=new DataView(b);
+  const w=(o,t)=>{for(let k=0;k<t.length;k++)v.setUint8(o+k,t.charCodeAt(k))};
+  w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+  for(let k=0;k<n;k++)v.setInt16(44+k*2,Math.max(-1,Math.min(1,fn(k/sr)*0.45*vol))*32767,true);
+  return URL.createObjectURL(new Blob([b],{type:'audio/wav'}))},
+ url(kind,vol){const q=Math.round(Math.max(.2,Math.min(1,vol))*20)/20,key=kind+'@'+q;return this.urls[key]||(this.urls[key]=this.wav(kind,q))},
+ el(){if(!this.a){this.a=new Audio();this.a.preload='auto'}return this.a},
+ // One <audio> element, unlocked on the Start tap, then re-used for every sound (follows the media volume like the voice)
+ unlock(){try{const a=this.el();a.src=this.url('soft',.2);a.muted=true;const p=a.play();p&&p.then(()=>{a.pause();a.currentTime=0;a.muted=false}).catch(()=>{a.muted=false})}catch(e){}},
+ play(kind,vol){try{const a=this.el();a.muted=false;a.src=this.url(kind,vol==null?1:vol);const p=a.play();p&&p.catch(()=>{})}catch(e){}},
+ stop(){try{if(this.a)this.a.pause()}catch(e){}},
+ // Nag mode: a different sound than last time, at a random volume for the stage
+ random(st){const calm=st==='mC'||st==='dC',ks=(calm?['soft','ding','bell']:['strong','drum','whistle','boing','ding']).filter(k=>k!==this.last);const k=ks[Math.floor(Math.random()*ks.length)];this.last=k;
+  const vol={mC:[.35,.6],mU:[.55,.8],mT:[.75,1],dC:[.5,.75],dF:[.7,.9],dM:[.85,1]}[st]||[.35,1];this.play(k,vol[0]+Math.random()*(vol[1]-vol[0]));return k}};
+const NAG_ST=k=>k<=2?'mC':k===3?'mU':k===4?'mT':k<=6?'dC':k<=8?'dF':'dM';
+const NAG_KEY={mC:'nMC',mU:'nMU',dC:'nDC',dF:'nDF',dM:'nDM'};
+// [pitch lo, pitch hi, rate lo, rate hi] per stage — random inside the range every time
+const NAG_TONE={mC:[1.0,1.15,.8,.9],mU:[1.2,1.4,1.0,1.1],mT:[1.5,1.8,1.15,1.3],dC:[.75,.85,.8,.88],dF:[.65,.75,.9,1.0],dM:[.5,.65,1.05,1.2]};
+// Voice names (substring match) of common female / male system voices per language (iPhone/iPad/Mac, Android, Windows/Edge).
+// If no male voice is installed for the language, parent 2 uses the default voice with a lower pitch.
+const NAG_V={
+ en:[['Samantha','Ava','Allison','Susan','Karen','Tessa','Moira','Victoria','Zira','Serena','Martha','Catherine','Nicky','Jenny','Aria','Google US English'],['Aaron','Fred','Alex','Tom','Daniel','Arthur','Oliver','Gordon','Rishi','David','Mark','Guy','Google UK English Male']],
+ es:[['Mónica','Monica','Paulina','Marisol','Helena','Laura','Sabina','Elvira','Dalia'],['Jorge','Juan','Diego','Carlos','Pablo','Álvaro','Alvaro','Raul']],
+ fr:[['Amélie','Amelie','Audrey','Aurélie','Marie','Julie','Hortense','Denise'],['Thomas','Nicolas','Daniel','Henri','Claude','Paul']],
+ de:[['Anna','Helena','Petra','Hedda','Katja','Sandy','Marlene'],['Markus','Yannick','Viktor','Stefan','Conrad','Martin']],
+ pt:[['Luciana','Joana','Catarina','Fernanda','Francisca','Raquel','Maria'],['Felipe','Joaquim','Antonio','Duarte','Daniel']],
+ it:[['Alice','Federica','Paola','Elsa','Isabella'],['Luca','Cosimo','Diego','Giuseppe']],
+ hi:[['Lekha','Kiyara','Kalpana','Swara','Heera'],['Hemant','Madhur','Rishi']],
+ ta:[['Vani','Pallavi'],['Valluvar']],te:[['Geeta','Shruti'],['Mohan']],kn:[['Soumya','Sapna'],['Gagan']],ml:[['Veena','Sobhana'],['Midhun']],
+ zh:[['Ting-Ting','Tingting','Yu-shu','Lili','Huihui','Xiaoxiao','Yaoyao'],['Li-mu','Limu','Kangkang','Yunxi','Yunyang']],
+ ja:[['Kyoko','O-ren','Haruka','Ayumi','Nanami'],['Otoya','Hattori','Ichiro','Keita']],
+ ko:[['Yuna','Sora','Heami','SunHi'],['Minsu','InJoon','Hyunsu']],
+ ar:[['Laila','Mariam','Hoda','Zariyah','Salma'],['Maged','Majed','Tarik','Naayf','Hamed']],
+ ru:[['Milena','Katya','Irina','Svetlana'],['Yuri','Pavel','Dmitry']]};
+try{if(window.speechSynthesis){speechSynthesis.getVoices();speechSynthesis.addEventListener&&speechSynthesis.addEventListener('voiceschanged',()=>speechSynthesis.getVoices())}}catch(e){}
+const nagLang=()=>String((RS&&RS.tts)||'en').slice(0,2).toLowerCase();
+const NS=k=>(RS&&RS[k]!=null)?RS[k]:(typeof I18N!=='undefined'&&I18N.en[k]!=null?I18N.en[k]:null);
+function nagVoice(dad){try{if((typeof NATIVE!=='undefined'&&NATIVE)||!window.speechSynthesis)return null;const lc=nagLang(),vs=speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.replace('_','-').toLowerCase().startsWith(lc));
+  for(const n of (NAG_V[lc]||[[],[]])[dad?1:0]){const v=vs.find(v=>v.name.toLowerCase().includes(n.toLowerCase()));if(v)return v}
+  const fem=v=>/female|woman/i.test(v.name),male=v=>/\bmale\b|\bman\b/i.test(v.name)&&!fem(v);return vs.find(dad?male:fem)||null}catch(e){return null}}
+function nagTone(st){const dad=st.charAt(0)==='d',v=nagVoice(dad),T=NAG_TONE[st],R_=(a,b)=>a+Math.random()*(b-a),drop=dad&&!v?.2:0;
+ return {voice:v,pitch:Math.max(.1,R_(T[0],T[1])-drop),rate:R_(T[2],T[3]),st}}
+function nagWho(){try{return String(kidName((R&&R.kid)||activeKid())||'').trim()}catch(e){return''}}
+// "Name, reminder" — first letter lower-cased only where the language allows it (never German nouns, never English "I")
+function withName(m){const n=nagWho();if(!n)return m;const lc=nagLang();
+ if(/^(en|es|fr|pt|it|ru)$/.test(lc)&&!(lc==='en'&&/^I\b/.test(m)))m=m.replace(/^([¡¿"«“]*)(\p{Lu})(?!\p{Lu})/u,(a,p,c)=>p+c.toLowerCase());
+ return String(NS('nagName')||'{n}, {m}').split('{n}').join(n).split('{m}').join(m)}
+function nagFill(p,x){const s=String(T(x)||'').trim().replace(/[\s.!?。！？।…]+$/u,''),d=voice?RS.sayDone:RS.pressDone;
+ return String(p).split('{s}').join(s).split('{w}').join(s.charAt(0).toLowerCase()+s.slice(1)).split('{d}').join(d||'').replace(/\s+/g,' ').trim()}
+// Chime first, then (1.1 s later, only if still on the same step) the name + reminder. Cleared by Done/Back/Pause/Stop.
+function nudge(text,tone){const me=i,r=run;try{if(tone)Chime.random(tone.st);else Chime.play('soft',R&&R.calm?.6:.85)}catch(e){}
+ later(1100,()=>{if(i===me&&r===run)say(withName(text),tone)})}
+const nagOn=x=>!!(x&&typeof x==='object'&&+x.wait>0&&x.nag&&!x._sh&&!x._shExit);
+const NAG_GAP=[10000,20000];
+function startNag(me,r){clearTimeout(check);const x=steps[me],calm=setting('nagStyle','escalate')==='calm';let k=0,lastJ=-1,lastSt='';
+ const over=()=>{if(i!==me||r!==run||!active)return;k++;const st=calm?'mC':NAG_ST(k);let msg;
+  if(st==='mT')msg=NS('nMT');
+  else{const V=NS(NAG_KEY[st])||[];if(st!==lastSt){lastSt=st;lastJ=-1}let j=0;do{j=Math.floor(Math.random()*V.length)}while(V.length>1&&j===lastJ);lastJ=j;msg=nagFill(V[j],x)}
+  if(st==='dC'&&k===5){const di=NS('nDI');msg=di+(/[。！？]$/.test(di)?'':' ')+msg} // parent 2's first line
+  nudge(msg,nagTone(st));
+  later(NAG_GAP[0]+Math.floor(Math.random()*(NAG_GAP[1]-NAG_GAP[0]+1)),over)};
+ over()}
 async function step(intro){clr();greetingPhase=false;if(i<steps.length&&steps[i].weather&&warm())steps.splice(i,1);if(i>=steps.length)return finish();
- const x=steps[i],me=i,r=run,txt=T(x)||'…',ad=typeof x==='object'&&x.auto===true;$('step').textContent=txt;bar();doneUI(x);adaptStart(x);
+ const x=steps[i],me=i,r=run,txt=T(x)||'…',ad=typeof x==='object'&&x.auto===true&&!nagOn(x);$('step').textContent=txt;bar();doneUI(x);adaptStart(x);
  if(x._sh)return runShower(me,r,intro);
  await say((intro?intro+' ':'')+txt+(ad?'':' '+(voice?RS.sayDone:RS.pressDone)));if(i!==me||r!==run)return;
  if(x._shExit)return shExitLoop(me,r);
- if(typeof x==='object'&&x.wait>0&&x.auto)later(x.wait*1000,()=>{if(i===me)next()});arm()}
-function arm(){clearTimeout(check);const ms=checkMs();if(!ms)return;check=setTimeout(()=>{if(active&&!paused&&i<steps.length){say(RS.still.replace('{s}',T(steps[i]))+' '+(voice?RS.sayDone:RS.pressDone));arm()}},ms)}
+ if(nagOn(x))later(x.wait*1000,()=>{if(i===me&&r===run)startNag(me,r)}); // time is up → remind until Done (v1.2.11)
+ else if(typeof x==='object'&&x.wait>0&&x.auto)later(x.wait*1000,()=>{if(i===me)next()});arm()}
+function arm(){clearTimeout(check);const ms=checkMs();if(!ms)return;check=setTimeout(()=>{if(active&&!paused&&i<steps.length){nudge(RS.still.replace('{s}',T(steps[i]))+' '+(voice?RS.sayDone:RS.pressDone));arm()}},ms)}
 function next(){if(!active||paused)return;clr();
  // During greeting, Done means "start step 1" — do not increment past it (was skipping first step)
  if(greetingPhase){greetingPhase=false;i=0;return step(RS.first)}
@@ -498,9 +581,9 @@ document.addEventListener('visibilitychange',()=>{if(typeof Adapt!=='undefined')
 function renderSteps(box,r){const dn=dayNames();box.innerHTML='<ol class="tl" style="padding:0"></ol><div class="row"><button class="as">'+esc(t('add'))+'</button><button class="aw">'+esc(t('weatherStep'))+'</button></div><p class="muted small">⏱ '+esc(t('timerEdit')||t('timer'))+'</p>';
  const ol=box.querySelector('ol');r.steps=r.steps.map(x=>typeof x==='string'?{text:x}:x);
  r.steps.forEach((x,n)=>{const li=document.createElement('li');li.style.display='block';
-  li.innerHTML=(x.weather?`<b>🌦 ${esc(t('weatherStep'))}</b>`:`<input type="text" class="tx" style="width:100%;font-size:1em;padding:6px">`)+`<div class="opts row small">⏱ <input type="number" min="0" step="1" class="wt" style="width:64px" placeholder="0" inputmode="numeric"> <span class="muted">${esc(t('minutes'))}</span> `+
+  li.innerHTML=(x.weather?`<b>🌦 ${esc(t('weatherStep'))}</b>`:`<input type="text" class="tx" style="width:100%;font-size:1em;padding:6px">`)+`<div class="opts row small">⏱ <input type="number" min="0" step="1" class="wt" style="width:64px" placeholder="0" inputmode="numeric"> <span class="muted">${esc(t('minutes'))}</span> <label class="row" style="margin:0" title="${esc(t('nagWhen'))}"><input type="checkbox" class="ng">🔔 ${esc(t('nagStep'))}</label> `+
    dn.map((d,j)=>`<label class="row" style="margin:0"><input type="checkbox" class="dy" data-d="${j}">${d}</label>`).join('')+`<button class="up">↑</button><button class="dn">↓</button><button class="rm">✕</button></div>`;
-  if(!x.weather)li.querySelector('.tx').value=x.text||'';li.querySelector('.wt').value=x.wait?Math.round(x.wait/60):'';
+  if(!x.weather)li.querySelector('.tx').value=x.text||'';li.querySelector('.wt').value=x.wait?Math.round(x.wait/60):'';li.querySelector('.ng').checked=!!x.nag;
   li.querySelectorAll('.dy').forEach(c=>c.checked=!x.days||!x.days.length||x.days.includes(+c.dataset.d));
   const re=f=>()=>{collectSteps(box,r);f();renderSteps(box,r)};
   li.querySelector('.up').onclick=re(()=>{if(n>0)[r.steps[n-1],r.steps[n]]=[r.steps[n],r.steps[n-1]]});
@@ -509,7 +592,7 @@ function renderSteps(box,r){const dn=dayNames();box.innerHTML='<ol class="tl" st
  box.querySelector('.as').onclick=()=>{collectSteps(box,r);r.steps.push({text:''});renderSteps(box,r)};
  box.querySelector('.aw').onclick=()=>{collectSteps(box,r);r.steps.push({weather:true});renderSteps(box,r)}}
 function collectSteps(box,r){[...box.querySelectorAll('ol>li')].forEach((li,n)=>{const x=r.steps[n];if(!x)return;
- if(!x.weather)x.text=li.querySelector('.tx').value;const mins=+li.querySelector('.wt').value||0;if(mins>0){x.wait=mins*60;x.auto=x.auto||true}else{delete x.wait;delete x.auto} // minutes in UI, seconds stored (same as wizard)
+ if(!x.weather)x.text=li.querySelector('.tx').value;const mins=+li.querySelector('.wt').value||0,ng=li.querySelector('.ng').checked;if(mins>0){x.wait=mins*60;if(ng){x.nag=true;delete x.auto}else{delete x.nag;x.auto=x.auto||true}}else{delete x.wait;delete x.auto;delete x.nag} // minutes in UI, seconds stored (same as wizard)
  const d=[...li.querySelectorAll('.dy')].filter(c=>c.checked).map(c=>+c.dataset.d);if(d.length===7||!d.length)delete x.days;else x.days=d});
  r.steps=r.steps.filter(x=>x.weather||(x.text||'').trim()!==''||!box.isConnected)}
 let EDR=null;
