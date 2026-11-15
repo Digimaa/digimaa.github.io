@@ -1,5 +1,5 @@
 // DigiMaa – onboarding wizard, multi-routine home, per-routine launch, runner, editor. © Net Zero Strategic, LLC
-const APP_VER='1.2.11';
+const APP_VER='1.2.12';
 const $=id=>document.getElementById(id),clone=o=>JSON.parse(JSON.stringify(o)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const nav2=(navigator.language||'en').slice(0,2);
@@ -83,7 +83,7 @@ $('toAbout').onclick=e=>{e.preventDefault();show('about')};
 // ---------- home ----------
 function home(){if(isChildMode())return childHome();markParentDevice();syncHomeUrl();applyLang();
  $('lang').innerHTML=Object.entries(I18N).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');$('lang').value=L;
- $('mode').value=setting('mode','touch');$('kid').value=kidName(activeKid());$('praiseSel').value=setting('praise','every');$('checkSel').value=String(setting('checkin',120));$('nagSel').value=setting('nagStyle','escalate');$('tempSel').value=setting('tempUnit','auto');renderKids();$('useWeather').checked=setting('weather',true);
+ $('mode').value=setting('mode','touch');$('kid').value=kidName(activeKid());$('praiseSel').value=setting('praise','every');$('checkSel').value=String(setting('checkin',120));$('tempSel').value=setting('tempUnit','auto');renderKids();$('useWeather').checked=setting('weather',true);
  const R=allR();$('rlist').innerHTML='';
  Object.values(R).filter(r=>!r.kid||r.kid===activeKid()).forEach(r=>{const d=document.createElement('div');d.className='rrow';
   d.innerHTML=`<button class="rbtn" style="background:${r.color}">${r.emoji} ${esc(r.name)}</button><button class="s" title="edit">✏️</button><button class="s" title="home screen">📲</button>`;
@@ -96,7 +96,7 @@ function home(){if(isChildMode())return childHome();markParentDevice();syncHomeU
  else{const box=$('shareBox');if(box)box.remove()}}
 
 $('lang').onchange=()=>{L=$('lang').value;LS.set('lang',L);home()};
-$('mode').onchange=()=>{LS.set('mode',$('mode').value);queueSyncUrl()};$('kid').onchange=()=>{setKidName($('kid').value.trim());renderKids();queueSyncUrl()};$('tempSel').onchange=()=>{LS.set('tempUnit',$('tempSel').value);queueSyncUrl()};$('praiseSel').onchange=()=>{LS.set('praise',$('praiseSel').value);queueSyncUrl()};$('checkSel').onchange=()=>{LS.set('checkin',+$('checkSel').value);queueSyncUrl()};$('nagSel').onchange=()=>{LS.set('nagStyle',$('nagSel').value);queueSyncUrl()};$('useWeather').onchange=()=>{LS.set('weather',$('useWeather').checked);queueSyncUrl()};
+$('mode').onchange=()=>{LS.set('mode',$('mode').value);queueSyncUrl()};$('kid').onchange=()=>{setKidName($('kid').value.trim());renderKids();queueSyncUrl()};$('tempSel').onchange=()=>{LS.set('tempUnit',$('tempSel').value);queueSyncUrl()};$('praiseSel').onchange=()=>{LS.set('praise',$('praiseSel').value);queueSyncUrl()};$('checkSel').onchange=()=>{LS.set('checkin',+$('checkSel').value);queueSyncUrl()};$('useWeather').onchange=()=>{LS.set('weather',$('useWeather').checked);queueSyncUrl()};
 $('newR').onclick=()=>{markParentDevice();canCreate()?startWizard(true):show('paywall')};
 function renderKids(){const k=kids(),a=activeKid(),bar=$('kidBar');
  bar.innerHTML=(k.length>1||k[0].name?k.map(x=>`<button class="chip${x.id===a?' on':''}" data-kid="${x.id}">🧒 ${esc(x.name||'…')}</button>`).join(''):'')+`<button class="chip" id="addKid">＋ ${esc(t('addKid'))}</button>`;
@@ -206,7 +206,7 @@ function xStep(x){if(typeof x==='string')return{text:x};if(x&&x.w)return{weather
 function cRoutine(r){return{i:r.id,n:r.name,e:r.emoji,c:r.color,l:r.lang||L,k:r.kid,m:r.calm?1:0,b:r.doneBy||'',s:(r.steps||[]).map(cStep)}}
 function xRoutine(o){if(!o)return null;if(o.id&&o.steps)return o;return{id:o.i||o.id,name:o.n||o.name,emoji:o.e||o.emoji||'⭐',color:o.c||o.color||'#4f46e5',lang:o.l||o.lang||L,kid:o.k||o.kid,calm:!!(o.m||o.calm),doneBy:o.b||o.doneBy||'',steps:(o.s||o.steps||[]).map(xStep)}}
 function packSetup(r){let kn='';try{kn=kidName(r.kid||activeKid())}catch(e){}
- return{v:1,r:cRoutine(r),k:kn,m:setting('mode','touch'),l:L,u:setting('tempUnit','auto'),p:setting('praise','every'),c:setting('checkin',120),w:setting('weather',true)?1:0,g:setting('nagStyle','escalate'),d:setting('device',wiz.device||null),y:setting('country',null)}}
+ return{v:1,r:cRoutine(r),k:kn,m:setting('mode','touch'),l:L,u:setting('tempUnit','auto'),p:setting('praise','every'),c:setting('checkin',120),w:setting('weather',true)?1:0,d:setting('device',wiz.device||null),y:setting('country',null)}}
 function unpackSetup(data){if(!data)return null;data=Object.assign({},data);if(data.r)data.r=xRoutine(data.r);
  if(data.kidName==null&&data.k!=null)data.kidName=data.k;if(data.mode==null&&data.m!=null)data.mode=data.m;
  if(data.lang==null&&data.l!=null)data.lang=data.l;if(data.tempUnit==null&&data.u!=null)data.tempUnit=data.u;
@@ -289,7 +289,7 @@ function importSetup(data,id,asChild){if(!data||!data.r)return false;data=unpack
   if(data.lang&&I18N[data.lang]){L=data.lang;LS.set('lang',L)}
   if(data.mode)LS.set('mode',data.mode);if(data.tempUnit)LS.set('tempUnit',data.tempUnit);if(data.praise)LS.set('praise',data.praise);
   if(data.checkin!=null)LS.set('checkin',data.checkin);if(data.weather!=null)LS.set('weather',!!data.weather);
-  if(data.device)LS.set('device',data.device);if(data.country)LS.set('country',data.country);if(data.nagStyle==='calm'||data.nagStyle==='escalate')LS.set('nagStyle',data.nagStyle);
+  if(data.device)LS.set('device',data.device);if(data.country)LS.set('country',data.country); // old share links may still carry nagStyle; ignore it
   const R=allR();const prev=R[rid];R[rid]=data.r;
   if(asChild||(prev&&prev.fromShare)){R[rid].fromShare=true;enableChildMode()}
   if(data.kidName){const k=kids();let c=k.find(x=>x.name===data.kidName);if(!c){if(k.length===1&&!k[0].name){k[0].name=data.kidName;c=k[0]}else{c={id:'k'+Date.now().toString(36),name:data.kidName};k.push(c)}LS.set('kids',k)}
@@ -471,13 +471,11 @@ function adaptable(x){return !!(x&&!x._sh&&!x._shExit)}
 function adaptKey(){return Adapt.stepKey(steps,i,y=>y&&y.weather?'__weather__':String((y&&y.text)||''))}
 function adaptStart(x){if(typeof Adapt==='undefined')return;if(adaptable(x))Adapt.start(adaptRK,adaptKey(),(+setting('checkin',120))*1000);else Adapt.abandon()}
 function checkMs(){const base=(+setting('checkin',120))*1000;if(!base||typeof Adapt==='undefined'||!adaptable(steps[i]))return base;return Adapt.interval(adaptRK,adaptKey(),base)}
-// ---------- Attention chime + name, and time-up reminders ("nag mode", v1.2.11) ----------
+// ---------- Attention chime + name, and time-up reminders ("nag mode", v1.2.12) ----------
 // Every spoken reminder starts with a short chime, then the child's name (if set). A step's time limit can either move on by
 // itself (as before) or "Remind until Done": when time is up, reminders repeat until Done (touch or voice) — Done stops them at once.
 // Reminders are deliberately unpredictable so they don't fade into background noise: random sound, volume, 10–20 s gaps,
-// non-repeating wording and voice tone. Setting nagStyle: 'escalate' (default) = parent 1 calm (1–2) → upset (3) → "telling Dad" (4)
-// → parent 2 (deeper / male voice where the phone has one) calm-stern (5–6) → firmer (7–8) → strongest (9+). 'calm' = gentle only.
-// Shower steps never use any of this (timed shower reminders stay exactly as they are).
+// and non-repeating wording, in one steady default voice. Shower steps never use any of this (timed shower reminders stay as they are).
 const Chime={a:null,urls:{},last:'',
  // Tiny generated WAVs (no downloads). Volume is baked into the samples because iPhone ignores <audio>.volume.
  SOUNDS:{
@@ -501,37 +499,11 @@ const Chime={a:null,urls:{},last:'',
  unlock(){try{const a=this.el();a.src=this.url('soft',.2);a.muted=true;const p=a.play();p&&p.then(()=>{a.pause();a.currentTime=0;a.muted=false}).catch(()=>{a.muted=false})}catch(e){}},
  play(kind,vol){try{const a=this.el();a.muted=false;a.src=this.url(kind,vol==null?1:vol);const p=a.play();p&&p.catch(()=>{})}catch(e){}},
  stop(){try{if(this.a)this.a.pause()}catch(e){}},
- // Nag mode: a different sound than last time, at a random volume for the stage
- random(st){const calm=st==='mC'||st==='dC',ks=(calm?['soft','ding','bell']:['strong','drum','whistle','boing','ding']).filter(k=>k!==this.last);const k=ks[Math.floor(Math.random()*ks.length)];this.last=k;
-  const vol={mC:[.35,.6],mU:[.55,.8],mT:[.75,1],dC:[.5,.75],dF:[.7,.9],dM:[.85,1]}[st]||[.35,1];this.play(k,vol[0]+Math.random()*(vol[1]-vol[0]));return k}};
-const NAG_ST=k=>k<=2?'mC':k===3?'mU':k===4?'mT':k<=6?'dC':k<=8?'dF':'dM';
-const NAG_KEY={mC:'nMC',mU:'nMU',dC:'nDC',dF:'nDF',dM:'nDM'};
-// [pitch lo, pitch hi, rate lo, rate hi] per stage — random inside the range every time
-const NAG_TONE={mC:[1.0,1.15,.8,.9],mU:[1.2,1.4,1.0,1.1],mT:[1.5,1.8,1.15,1.3],dC:[.75,.85,.8,.88],dF:[.65,.75,.9,1.0],dM:[.5,.65,1.05,1.2]};
-// Voice names (substring match) of common female / male system voices per language (iPhone/iPad/Mac, Android, Windows/Edge).
-// If no male voice is installed for the language, parent 2 uses the default voice with a lower pitch.
-const NAG_V={
- en:[['Samantha','Ava','Allison','Susan','Karen','Tessa','Moira','Victoria','Zira','Serena','Martha','Catherine','Nicky','Jenny','Aria','Google US English'],['Aaron','Fred','Alex','Tom','Daniel','Arthur','Oliver','Gordon','Rishi','David','Mark','Guy','Google UK English Male']],
- es:[['Mónica','Monica','Paulina','Marisol','Helena','Laura','Sabina','Elvira','Dalia'],['Jorge','Juan','Diego','Carlos','Pablo','Álvaro','Alvaro','Raul']],
- fr:[['Amélie','Amelie','Audrey','Aurélie','Marie','Julie','Hortense','Denise'],['Thomas','Nicolas','Daniel','Henri','Claude','Paul']],
- de:[['Anna','Helena','Petra','Hedda','Katja','Sandy','Marlene'],['Markus','Yannick','Viktor','Stefan','Conrad','Martin']],
- pt:[['Luciana','Joana','Catarina','Fernanda','Francisca','Raquel','Maria'],['Felipe','Joaquim','Antonio','Duarte','Daniel']],
- it:[['Alice','Federica','Paola','Elsa','Isabella'],['Luca','Cosimo','Diego','Giuseppe']],
- hi:[['Lekha','Kiyara','Kalpana','Swara','Heera'],['Hemant','Madhur','Rishi']],
- ta:[['Vani','Pallavi'],['Valluvar']],te:[['Geeta','Shruti'],['Mohan']],kn:[['Soumya','Sapna'],['Gagan']],ml:[['Veena','Sobhana'],['Midhun']],
- zh:[['Ting-Ting','Tingting','Yu-shu','Lili','Huihui','Xiaoxiao','Yaoyao'],['Li-mu','Limu','Kangkang','Yunxi','Yunyang']],
- ja:[['Kyoko','O-ren','Haruka','Ayumi','Nanami'],['Otoya','Hattori','Ichiro','Keita']],
- ko:[['Yuna','Sora','Heami','SunHi'],['Minsu','InJoon','Hyunsu']],
- ar:[['Laila','Mariam','Hoda','Zariyah','Salma'],['Maged','Majed','Tarik','Naayf','Hamed']],
- ru:[['Milena','Katya','Irina','Svetlana'],['Yuri','Pavel','Dmitry']]};
-try{if(window.speechSynthesis){speechSynthesis.getVoices();speechSynthesis.addEventListener&&speechSynthesis.addEventListener('voiceschanged',()=>speechSynthesis.getVoices())}}catch(e){}
+ // Nag mode: a different sound than last time, at a random volume (35–100%)
+ random(){const ks=['soft','strong','bell','whistle','drum','ding','boing'].filter(k=>k!==this.last);const k=ks[Math.floor(Math.random()*ks.length)];this.last=k;
+  this.play(k,.35+Math.random()*.65);return k}};
 const nagLang=()=>String((RS&&RS.tts)||'en').slice(0,2).toLowerCase();
 const NS=k=>(RS&&RS[k]!=null)?RS[k]:(typeof I18N!=='undefined'&&I18N.en[k]!=null?I18N.en[k]:null);
-function nagVoice(dad){try{if((typeof NATIVE!=='undefined'&&NATIVE)||!window.speechSynthesis)return null;const lc=nagLang(),vs=speechSynthesis.getVoices().filter(v=>v.lang&&v.lang.replace('_','-').toLowerCase().startsWith(lc));
-  for(const n of (NAG_V[lc]||[[],[]])[dad?1:0]){const v=vs.find(v=>v.name.toLowerCase().includes(n.toLowerCase()));if(v)return v}
-  const fem=v=>/female|woman/i.test(v.name),male=v=>/\bmale\b|\bman\b/i.test(v.name)&&!fem(v);return vs.find(dad?male:fem)||null}catch(e){return null}}
-function nagTone(st){const dad=st.charAt(0)==='d',v=nagVoice(dad),T=NAG_TONE[st],R_=(a,b)=>a+Math.random()*(b-a),drop=dad&&!v?.2:0;
- return {voice:v,pitch:Math.max(.1,R_(T[0],T[1])-drop),rate:R_(T[2],T[3]),st}}
 function nagWho(){try{return String(kidName((R&&R.kid)||activeKid())||'').trim()}catch(e){return''}}
 // "Name, reminder" — first letter lower-cased only where the language allows it (never German nouns, never English "I")
 function withName(m){const n=nagWho();if(!n)return m;const lc=nagLang();
@@ -540,16 +512,14 @@ function withName(m){const n=nagWho();if(!n)return m;const lc=nagLang();
 function nagFill(p,x){const s=String(T(x)||'').trim().replace(/[\s.!?。！？।…]+$/u,''),d=voice?RS.sayDone:RS.pressDone;
  return String(p).split('{s}').join(s).split('{w}').join(s.charAt(0).toLowerCase()+s.slice(1)).split('{d}').join(d||'').replace(/\s+/g,' ').trim()}
 // Chime first, then (1.1 s later, only if still on the same step) the name + reminder. Cleared by Done/Back/Pause/Stop.
-function nudge(text,tone){const me=i,r=run;try{if(tone)Chime.random(tone.st);else Chime.play('soft',R&&R.calm?.6:.85)}catch(e){}
- later(1100,()=>{if(i===me&&r===run)say(withName(text),tone)})}
+function nudge(text,kind){const me=i,r=run;try{if(kind==='nag')Chime.random();else Chime.play('soft',R&&R.calm?.6:.85)}catch(e){}
+ later(1100,()=>{if(i===me&&r===run)say(withName(text))})}
 const nagOn=x=>!!(x&&typeof x==='object'&&+x.wait>0&&x.nag&&!x._sh&&!x._shExit);
 const NAG_GAP=[10000,20000];
-function startNag(me,r){clearTimeout(check);const x=steps[me],calm=setting('nagStyle','escalate')==='calm';let k=0,lastJ=-1,lastSt='';
- const over=()=>{if(i!==me||r!==run||!active)return;k++;const st=calm?'mC':NAG_ST(k);let msg;
-  if(st==='mT')msg=NS('nMT');
-  else{const V=NS(NAG_KEY[st])||[];if(st!==lastSt){lastSt=st;lastJ=-1}let j=0;do{j=Math.floor(Math.random()*V.length)}while(V.length>1&&j===lastJ);lastJ=j;msg=nagFill(V[j],x)}
-  if(st==='dC'&&k===5){const di=NS('nDI');msg=di+(/[。！？]$/.test(di)?'':' ')+msg} // parent 2's first line
-  nudge(msg,nagTone(st));
+function startNag(me,r){clearTimeout(check);const x=steps[me];let lastJ=-1;
+ const over=()=>{if(i!==me||r!==run||!active)return;
+  const V=NS('nNag')||[];let j=0;do{j=Math.floor(Math.random()*V.length)}while(V.length>1&&j===lastJ);lastJ=j;
+  nudge(nagFill(V[j],x),'nag');
   later(NAG_GAP[0]+Math.floor(Math.random()*(NAG_GAP[1]-NAG_GAP[0]+1)),over)};
  over()}
 async function step(intro){clr();greetingPhase=false;if(i<steps.length&&steps[i].weather&&warm())steps.splice(i,1);if(i>=steps.length)return finish();
@@ -557,7 +527,7 @@ async function step(intro){clr();greetingPhase=false;if(i<steps.length&&steps[i]
  if(x._sh)return runShower(me,r,intro);
  await say((intro?intro+' ':'')+txt+(ad?'':' '+(voice?RS.sayDone:RS.pressDone)));if(i!==me||r!==run)return;
  if(x._shExit)return shExitLoop(me,r);
- if(nagOn(x))later(x.wait*1000,()=>{if(i===me&&r===run)startNag(me,r)}); // time is up → remind until Done (v1.2.11)
+ if(nagOn(x))later(x.wait*1000,()=>{if(i===me&&r===run)startNag(me,r)}); // time is up → remind until Done (v1.2.12)
  else if(typeof x==='object'&&x.wait>0&&x.auto)later(x.wait*1000,()=>{if(i===me)next()});arm()}
 function arm(){clearTimeout(check);const ms=checkMs();if(!ms)return;check=setTimeout(()=>{if(active&&!paused&&i<steps.length){nudge(RS.still.replace('{s}',T(steps[i]))+' '+(voice?RS.sayDone:RS.pressDone));arm()}},ms)}
 function next(){if(!active||paused)return;clr();

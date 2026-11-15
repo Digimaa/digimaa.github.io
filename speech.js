@@ -2,7 +2,7 @@
 const Cap=window.Capacitor,NATIVE=!!(Cap&&Cap.isNativePlatform&&Cap.isNativePlatform());
 const NP=n=>NATIVE&&Cap.Plugins&&Cap.Plugins[n];
 const Speech={lang:'en-US',onHeard:null,_rec:null,_on:false,_say:0,
- // o (optional, v1.2.11 time-up reminders): {voice, pitch, rate}. Without o everything is exactly as before.
+ // o (optional): {voice, pitch, rate}. Reminders use the default voice; without o everything is as before.
  async speak(text,o){const id=++this._say;o=o||{};
   const cap=ms=>new Promise(res=>{const t=setTimeout(res,ms);return t});
   if(NP('TextToSpeech')){try{await NP('TextToSpeech').stop()}catch(e){}
