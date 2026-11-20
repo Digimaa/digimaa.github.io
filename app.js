@@ -1,5 +1,5 @@
 // DigiMaa – onboarding wizard, multi-routine home, per-routine launch, runner, editor. © Net Zero Strategic, LLC
-const APP_VER='1.2.12';
+const APP_VER='1.2.13';
 const $=id=>document.getElementById(id),clone=o=>JSON.parse(JSON.stringify(o)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const nav2=(navigator.language||'en').slice(0,2);
@@ -83,7 +83,7 @@ $('toAbout').onclick=e=>{e.preventDefault();show('about')};
 // ---------- home ----------
 function home(){if(isChildMode())return childHome();markParentDevice();syncHomeUrl();applyLang();
  $('lang').innerHTML=Object.entries(I18N).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');$('lang').value=L;
- $('mode').value=setting('mode','touch');$('kid').value=kidName(activeKid());$('praiseSel').value=setting('praise','every');$('checkSel').value=String(setting('checkin',120));$('tempSel').value=setting('tempUnit','auto');renderKids();$('useWeather').checked=setting('weather',true);
+ $('mode').value=setting('mode','touch');$('kid').value=kidName(activeKid());$('praiseSel').value=setting('praise','every');$('checkSel').value=String(setting('checkin',120));$('tempSel').value=setting('tempUnit','auto');renderKids();$('useWeather').checked=setting('weather',true);if(typeof MON!=='undefined')MON.renderSetting();
  const R=allR();$('rlist').innerHTML='';
  Object.values(R).filter(r=>!r.kid||r.kid===activeKid()).forEach(r=>{const d=document.createElement('div');d.className='rrow';
   d.innerHTML=`<button class="rbtn" style="background:${r.color}">${r.emoji} ${esc(r.name)}</button><button class="s" title="edit">✏️</button><button class="s" title="home screen">📲</button>`;
