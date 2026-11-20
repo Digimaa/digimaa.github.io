@@ -1,5 +1,5 @@
 // DigiMaa – onboarding wizard, multi-routine home, per-routine launch, runner, editor. © Net Zero Strategic, LLC
-const APP_VER='1.2.13';
+const APP_VER='1.2.14';
 const $=id=>document.getElementById(id),clone=o=>JSON.parse(JSON.stringify(o)),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const LS={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const nav2=(navigator.language||'en').slice(0,2);
@@ -83,7 +83,7 @@ $('toAbout').onclick=e=>{e.preventDefault();show('about')};
 // ---------- home ----------
 function home(){if(isChildMode())return childHome();markParentDevice();syncHomeUrl();applyLang();
  $('lang').innerHTML=Object.entries(I18N).map(([k,v])=>`<option value="${k}">${v.name}</option>`).join('');$('lang').value=L;
- $('mode').value=setting('mode','touch');$('kid').value=kidName(activeKid());$('praiseSel').value=setting('praise','every');$('checkSel').value=String(setting('checkin',120));$('tempSel').value=setting('tempUnit','auto');renderKids();$('useWeather').checked=setting('weather',true);if(typeof MON!=='undefined')MON.renderSetting();
+ $('mode').value=setting('mode','touch');$('kid').value=kidName(activeKid());$('praiseSel').value=setting('praise','every');$('checkSel').value=String(setting('checkin',120));$('tempSel').value=setting('tempUnit','auto');renderKids();$('useWeather').checked=setting('weather',true);renderCity();
  const R=allR();$('rlist').innerHTML='';
  Object.values(R).filter(r=>!r.kid||r.kid===activeKid()).forEach(r=>{const d=document.createElement('div');d.className='rrow';
   d.innerHTML=`<button class="rbtn" style="background:${r.color}">${r.emoji} ${esc(r.name)}</button><button class="s" title="edit">✏️</button><button class="s" title="home screen">📲</button>`;
@@ -96,7 +96,7 @@ function home(){if(isChildMode())return childHome();markParentDevice();syncHomeU
  else{const box=$('shareBox');if(box)box.remove()}}
 
 $('lang').onchange=()=>{L=$('lang').value;LS.set('lang',L);home()};
-$('mode').onchange=()=>{LS.set('mode',$('mode').value);queueSyncUrl()};$('kid').onchange=()=>{setKidName($('kid').value.trim());renderKids();queueSyncUrl()};$('tempSel').onchange=()=>{LS.set('tempUnit',$('tempSel').value);queueSyncUrl()};$('praiseSel').onchange=()=>{LS.set('praise',$('praiseSel').value);queueSyncUrl()};$('checkSel').onchange=()=>{LS.set('checkin',+$('checkSel').value);queueSyncUrl()};$('useWeather').onchange=()=>{LS.set('weather',$('useWeather').checked);queueSyncUrl()};
+$('mode').onchange=()=>{LS.set('mode',$('mode').value);queueSyncUrl()};$('kid').onchange=()=>{setKidName($('kid').value.trim());renderKids();queueSyncUrl()};$('tempSel').onchange=()=>{LS.set('tempUnit',$('tempSel').value);queueSyncUrl()};$('praiseSel').onchange=()=>{LS.set('praise',$('praiseSel').value);queueSyncUrl()};$('checkSel').onchange=()=>{LS.set('checkin',+$('checkSel').value);queueSyncUrl()};$('useWeather').onchange=()=>{LS.set('weather',$('useWeather').checked);queueSyncUrl()};$('city').onchange=()=>setCity($('city').value);
 $('newR').onclick=()=>{markParentDevice();canCreate()?startWizard(true):show('paywall')};
 function renderKids(){const k=kids(),a=activeKid(),bar=$('kidBar');
  bar.innerHTML=(k.length>1||k[0].name?k.map(x=>`<button class="chip${x.id===a?' on':''}" data-kid="${x.id}">🧒 ${esc(x.name||'…')}</button>`).join(''):'')+`<button class="chip" id="addKid">＋ ${esc(t('addKid'))}</button>`;
@@ -206,13 +206,13 @@ function xStep(x){if(typeof x==='string')return{text:x};if(x&&x.w)return{weather
 function cRoutine(r){return{i:r.id,n:r.name,e:r.emoji,c:r.color,l:r.lang||L,k:r.kid,m:r.calm?1:0,b:r.doneBy||'',s:(r.steps||[]).map(cStep)}}
 function xRoutine(o){if(!o)return null;if(o.id&&o.steps)return o;return{id:o.i||o.id,name:o.n||o.name,emoji:o.e||o.emoji||'⭐',color:o.c||o.color||'#4f46e5',lang:o.l||o.lang||L,kid:o.k||o.kid,calm:!!(o.m||o.calm),doneBy:o.b||o.doneBy||'',steps:(o.s||o.steps||[]).map(xStep)}}
 function packSetup(r){let kn='';try{kn=kidName(r.kid||activeKid())}catch(e){}
- return{v:1,r:cRoutine(r),k:kn,m:setting('mode','touch'),l:L,u:setting('tempUnit','auto'),p:setting('praise','every'),c:setting('checkin',120),w:setting('weather',true)?1:0,d:setting('device',wiz.device||null),y:setting('country',null)}}
+ return{v:1,r:cRoutine(r),k:kn,m:setting('mode','touch'),l:L,u:setting('tempUnit','auto'),p:setting('praise','every'),c:setting('checkin',120),w:setting('weather',true)?1:0,d:setting('device',wiz.device||null),y:setting('country',null),ct:cityPack()}}
 function unpackSetup(data){if(!data)return null;data=Object.assign({},data);if(data.r)data.r=xRoutine(data.r);
  if(data.kidName==null&&data.k!=null)data.kidName=data.k;if(data.mode==null&&data.m!=null)data.mode=data.m;
  if(data.lang==null&&data.l!=null)data.lang=data.l;if(data.tempUnit==null&&data.u!=null)data.tempUnit=data.u;
  if(data.praise==null&&data.p!=null)data.praise=data.p;if(data.checkin==null&&data.c!=null)data.checkin=data.c;
  if(data.weather==null&&data.w!=null)data.weather=!!data.w;if(data.device==null&&data.d!=null)data.device=data.d;
- if(data.country==null&&data.y!=null)data.country=data.y;if(data.nagStyle==null&&data.g!=null)data.nagStyle=data.g;return data}
+ if(data.country==null&&data.y!=null)data.country=data.y;if(data.city==null&&data.ct!=null)data.city=data.ct;if(data.nagStyle==null&&data.g!=null)data.nagStyle=data.g;return data}
 function encodePack(o){return b64(o)} // sync: compact JSON + base64url
 async function encodePackZ(o){const json=JSON.stringify(o);try{if(typeof CompressionStream!=='undefined'){
   const ab=await new Response(new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer();
@@ -289,7 +289,7 @@ function importSetup(data,id,asChild){if(!data||!data.r)return false;data=unpack
   if(data.lang&&I18N[data.lang]){L=data.lang;LS.set('lang',L)}
   if(data.mode)LS.set('mode',data.mode);if(data.tempUnit)LS.set('tempUnit',data.tempUnit);if(data.praise)LS.set('praise',data.praise);
   if(data.checkin!=null)LS.set('checkin',data.checkin);if(data.weather!=null)LS.set('weather',!!data.weather);
-  if(data.device)LS.set('device',data.device);if(data.country)LS.set('country',data.country); // old share links may still carry nagStyle; ignore it
+  if(data.device)LS.set('device',data.device);if(data.country)LS.set('country',data.country);if(data.city){const c=cityUnpack(data.city);if(c)LS.set('city',c)} // old share links may still carry nagStyle; ignore it
   const R=allR();const prev=R[rid];R[rid]=data.r;
   if(asChild||(prev&&prev.fromShare)){R[rid].fromShare=true;enableChildMode()}
   if(data.kidName){const k=kids();let c=k.find(x=>x.name===data.kidName);if(!c){if(k.length===1&&!k[0].name){k[0].name=data.kidName;c=k[0]}else{c={id:'k'+Date.now().toString(36),name:data.kidName};k.push(c)}LS.set('kids',k)}
@@ -364,23 +364,43 @@ async function routeLaunch(url){const{id,data,share,child}=await extractPack(url
  if(NATIVE||isStandalone()){if(isChildMode()){childHome();return true}start(rid);return true}
  if(isChildMode()){childHome();return true}
  setHeadFor(r);$('lIcon').style.background=r.color;$('lIcon').textContent=r.emoji;$('lName').textContent=r.name;$('lStart').onclick=()=>start(rid);show('launch');return true}
-// ---------- weather (optional, device location) ----------
-// Temperature unit follows where the device actually is (not the UI language). Decisions are made in °C; °F only for speaking.
+// ---------- weather (optional, city typed by a parent; no GPS / location permission anywhere, v1.2.14) ----------
+// The parent types a city once. Open-Meteo geocoding turns the NAME into the city's coordinates + country; the forecast then uses
+// those city coordinates. Nothing about the device's location is read or sent. Decisions are made in °C; °F only for speaking.
 const F_COUNTRIES=['US','PR','GU','VI','AS','MP','UM','LR','BS','BZ','KY','PW','FM','MH'];
 let TEMP_C=null;
 function regionFromDevice(){for(const l of [...(navigator.languages||[]),navigator.language,Intl.DateTimeFormat().resolvedOptions().locale]){try{const r=new Intl.Locale(l).maximize().region;if(r&&/^[A-Z]{2}$/.test(r))return r}catch(e){}}return null}
-function useF(){const o=setting('tempUnit','auto');if(o==='F')return true;if(o==='C')return false;const c=setting('country',null)||regionFromDevice();return F_COUNTRIES.includes(c)}
-function timeoutFetch(url,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);return fetch(url,{signal:c.signal}).finally(()=>clearTimeout(t))}
-async function countryFromCoords(lat,lon){try{const d=await (await timeoutFetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`,4000)).json();
-  if(d&&/^[A-Z]{2}$/.test(d.countryCode||'')){LS.set('country',d.countryCode);return d.countryCode}}catch(e){}return null}
-function getWeather(){if(!setting('weather',true)||!navigator.geolocation)return;
- navigator.geolocation.getCurrentPosition(p=>{const lat=p.coords.latitude.toFixed(2),lon=p.coords.longitude.toFixed(2);countryFromCoords(lat,lon);
-  timeoutFetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m`,6000).then(r=>r.json()).then(d=>TEMP_C=d.current.temperature_2m).catch(()=>{})},
-  ()=>{},{timeout:8000,maximumAge:36e5})}
+function useF(){const o=setting('tempUnit','auto');if(o==='F')return true;if(o==='C')return false;const ci=setting('city',null);const c=(ci&&ci.cc)||setting('country',null)||regionFromDevice();return F_COUNTRIES.includes(c)}
+function timeoutFetch(url,ms){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);return fetch(url,{signal:c.signal,credentials:'omit',referrerPolicy:'no-referrer'}).finally(()=>clearTimeout(t))}
+const okCity=c=>c&&typeof c.name==='string'&&isFinite(c.lat)&&isFinite(c.lon)&&Math.abs(c.lat)<=90&&Math.abs(c.lon)<=180;
+function cityPack(){const c=setting('city',null);return okCity(c)?{n:c.name,a:c.lat,o:c.lon,c:c.cc||''}:null}
+function cityUnpack(p){const c=p&&{name:String(p.n||p.name||'').slice(0,80),label:String(p.n||p.name||'').slice(0,80),lat:+(p.a??p.lat),lon:+(p.o??p.lon),cc:/^[A-Z]{2}$/.test(p.c||p.cc||'')?(p.c||p.cc):''};return okCity(c)?c:null}
+async function findCity(name){const q=String(name||'').trim().slice(0,80);if(q.length<2)return null;
+ const d=await (await timeoutFetch('https://geocoding-api.open-meteo.com/v1/search?count=1&format=json&language='+encodeURIComponent(L)+'&name='+encodeURIComponent(q),6000)).json();
+ const r=d&&d.results&&d.results[0];if(!r)return null;
+ const c={name:q,label:[r.name,r.admin1,r.country].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(', '),lat:Math.round(r.latitude*100)/100,lon:Math.round(r.longitude*100)/100,cc:/^[A-Z]{2}$/.test(r.country_code||'')?r.country_code:''};
+ return okCity(c)?c:null}
+function renderCity(msg){const c=setting('city',null),inp=$('city'),info=$('cityInfo');if(!inp||!info)return;if(document.activeElement!==inp)inp.value=okCity(c)?c.name:'';
+ info.textContent=msg||(okCity(c)?t('cityFound',{c:c.label||c.name}):t('cityHelp'))}
+async function setCity(v){v=String(v||'').trim();if(!v){LS.set('city',null);TEMP_C=null;WX=null;renderCity();queueSyncUrl();return}
+ renderCity('…');let c=null;try{c=await findCity(v)}catch(e){return renderCity(t('cityErr'))}
+ if(!c)return renderCity(t('cityNone'));LS.set('city',c);if(c.cc)LS.set('country',c.cc);TEMP_C=null;WX=null;renderCity();queueSyncUrl();getWeather()}
+// Forecast for the parent's city (cached 1 h). Cold → jacket, rain → raincoat/umbrella, hot → light clothes, sunscreen, water.
+let WX=null; // {at,key,t,tmax,rain}
+const RAIN_CODES=[51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99];
+function parseWx(d){const c=d&&d.current,y=d&&d.daily;if(!c||typeof c.temperature_2m!=='number')return null;
+ const pp=y&&y.precipitation_probability_max&&y.precipitation_probability_max[0],tm=y&&y.temperature_2m_max&&y.temperature_2m_max[0];
+ return {t:c.temperature_2m,tmax:typeof tm==='number'?tm:c.temperature_2m,rain:(typeof pp==='number'&&pp>=50)||(+c.precipitation>0.1)||RAIN_CODES.includes(+c.weather_code)}}
+function getWeather(){const c=setting('city',null);if(!setting('weather',true)||!okCity(c)){WX=null;TEMP_C=null;return Promise.resolve(null)}
+ const key=(+c.lat).toFixed(2)+','+(+c.lon).toFixed(2);if(WX&&WX.key===key&&Date.now()-WX.at<36e5)return Promise.resolve(WX);
+ return timeoutFetch(`https://api.open-meteo.com/v1/forecast?latitude=${(+c.lat).toFixed(2)}&longitude=${(+c.lon).toFixed(2)}&current=temperature_2m,precipitation,weather_code&daily=temperature_2m_max,precipitation_probability_max&forecast_days=1&timezone=auto`,6000)
+  .then(r=>r.json()).then(d=>{const w=parseWx(d);if(w){WX=Object.assign(w,{at:Date.now(),key});TEMP_C=w.t}return WX}).catch(()=>null)}
 // ---------- runner ----------
 let R=null,RS=null,steps=[],i=0,active=false,paused=false,voice=false,tm=[],check,run=0;
-function weatherText(){if(TEMP_C==null)return RS.wNone;const n=Math.round(useF()?TEMP_C*9/5+32:TEMP_C);return(TEMP_C<10?RS.wCold:RS.wMild).replace('{t}',n)} // cold < 10 °C (= 50 °F)
-const warm=()=>TEMP_C!=null&&TEMP_C>=18.3; // skip jacket at 18.3 °C (= 65 °F) or warmer
+function weatherText(){const w=WX;if(!w||!RS)return '';const deg=c=>Math.round(useF()?c*9/5+32:c),parts=[];
+ if(w.t<10)parts.push(RS.wCold.replace('{t}',deg(w.t)));else if(w.t<18.3)parts.push(RS.wMild.replace('{t}',deg(w.t)));else if(w.tmax>=28)parts.push(RS.wHot.replace('{t}',deg(w.tmax)));
+ if(w.rain)parts.push(RS.wRain);return parts.join(' ')} // cold < 10 °C (50 °F), light jacket < 18.3 °C (65 °F), hot ≥ 28 °C (82 °F)
+const warm=()=>!weatherText(); // nothing to remind (no city, lookup failed, or pleasant and dry) → the weather step is skipped quietly
 const T=x=>typeof x==='string'?x:x.weather?weatherText():x.text;
 const later=(ms,f)=>{const r=run;tm.push(setTimeout(()=>{if(active&&!paused&&r===run)f()},ms))};
 const clr=()=>{tm.forEach(clearTimeout);tm=[];clearTimeout(check);if(typeof Chime!=='undefined')Chime.stop()};
@@ -613,7 +633,7 @@ function armStandaloneUpdateChecks(){
  migrateChildMode();wireParentEscape();
  const launched=await routeLaunch(location.href);
  migrateChildMode(); // again after import flags
- await SUB.init();applyLang();paintVer();wireParentEscape();
+ await SUB.init();applyLang();paintVer();wireParentEscape();getWeather();
  if(isChildMode())scrubSendButtons();
  if(NATIVE&&NP('App')){NP('App').addListener('appUrlOpen',e=>routeLaunch(e.url));try{const u=await NP('App').getLaunchUrl();if(u&&u.url&&await routeLaunch(u.url))return}catch(e){}}
  if(launched)return;
